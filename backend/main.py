@@ -15,6 +15,7 @@ import mock_data
 from scanner import Scanner
 from target_manager import TargetManager
 from auto_trader import AutoTrader
+from sentiment import SentimentAnalyzer
 from strategies.day_trader import DayTrader
 from strategies.swing_trader import SwingTrader
 
@@ -29,7 +30,8 @@ scanner = Scanner(alpaca)
 target_mgr = TargetManager()
 day_trader = DayTrader(alpaca)
 swing_trader = SwingTrader(alpaca)
-auto_trader = AutoTrader(alpaca, scanner)
+sentiment_analyzer = SentimentAnalyzer()
+auto_trader = AutoTrader(alpaca, scanner, sentiment_analyzer)
 
 # In-memory equity history for demo mode / live tracking (capped at 1440 pts)
 _equity_history: List[dict] = []
@@ -150,6 +152,28 @@ async def auto_trader_loop():
         await asyncio.sleep(60)
 
 
+async def sentiment_loop():
+    while True:
+        try:
+            trending  = await sentiment_analyzer.get_trending()
+            reddit    = await sentiment_analyzer.get_reddit_mentions()
+            # Score sentiment for trending + top universe symbols
+            hot_syms  = list({s["symbol"] for s in trending[:10]} |
+                             set(UNIVERSE[:20]))
+            scores    = await sentiment_analyzer.scan_sentiment(hot_syms)
+            await manager.broadcast({
+                "type": "sentiment",
+                "data": {
+                    "scores":   scores,
+                    "trending": trending[:15],
+                    "reddit":   reddit[:15],
+                },
+            })
+        except Exception as e:
+            print(f"[sentiment_loop] {e}")
+        await asyncio.sleep(300)  # every 5 minutes
+
+
 async def strategy_loop():
     while True:
         try:
@@ -181,6 +205,7 @@ async def lifespan(app: FastAPI):
     asyncio.create_task(broadcast_loop())
     asyncio.create_task(scanner_loop())
     asyncio.create_task(auto_trader_loop())
+    asyncio.create_task(sentiment_loop())
     asyncio.create_task(strategy_loop())
     asyncio.create_task(news_loop())
     yield
@@ -348,6 +373,15 @@ async def portfolio_history(period: str = "1M"):
     except Exception as e:
         print(f"[portfolio_history] {e}")
         return _equity_history
+
+
+@app.get("/api/sentiment")
+async def get_sentiment():
+    trending = await sentiment_analyzer.get_trending()
+    reddit   = await sentiment_analyzer.get_reddit_mentions()
+    hot_syms = list({s["symbol"] for s in trending[:10]} | set(UNIVERSE[:20]))
+    scores   = await sentiment_analyzer.scan_sentiment(hot_syms)
+    return {"scores": scores, "trending": trending[:15], "reddit": reddit[:15]}
 
 
 @app.get("/api/bot/status")

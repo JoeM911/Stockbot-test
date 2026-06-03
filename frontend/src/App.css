@@ -431,6 +431,81 @@ body {
 .sent-negative { color: var(--red);   font-size: 8px; }
 .sent-neutral  { color: var(--text-dim); font-size: 8px; }
 
+/* ============================================================ SENTIMENT */
+.sent-row {
+  display: grid;
+  grid-template-columns: 52px 1fr 32px;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-bottom: 1px solid #0a1020;
+  cursor: pointer;
+}
+.sent-row:hover { background: var(--bg-hover); }
+.sent-sym { color: var(--text-hi); font-size: 10px; font-weight: 700; }
+
+.sent-bars {
+  display: flex;
+  height: 6px;
+  border-radius: 2px;
+  overflow: hidden;
+  background: #0d1428;
+}
+.sent-bull { background: var(--green); transition: width 0.4s; }
+.sent-bear { background: var(--red);   transition: width 0.4s; }
+
+.sent-section-header {
+  padding: 4px 8px 2px;
+  font-size: 8px;
+  color: var(--text-dim);
+  letter-spacing: 1px;
+  background: #060a14;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+
+.sent-reddit-row {
+  display: grid;
+  grid-template-columns: 52px 1fr 30px;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  border-bottom: 1px solid #0a1020;
+  cursor: pointer;
+}
+.sent-reddit-row:hover { background: var(--bg-hover); }
+
+.sent-mention-bar-wrap {
+  background: #0d1428;
+  height: 4px;
+  border-radius: 2px;
+  overflow: hidden;
+}
+.sent-mention-bar {
+  height: 100%;
+  background: var(--gold);
+  border-radius: 2px;
+  transition: width 0.4s;
+}
+
+.sent-trending-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 6px 8px;
+}
+.sent-trending-pill {
+  background: var(--cyan-dim);
+  border: 1px solid #00bcd428;
+  color: var(--cyan);
+  font-size: 9px;
+  padding: 2px 6px;
+  cursor: pointer;
+  border-radius: 2px;
+  transition: background 0.1s;
+}
+.sent-trending-pill:hover { background: #00bcd430; }
+
 /* ============================================================ TARGETS */
 .target-add {
   display: flex; gap: 4px; padding: 6px 8px;

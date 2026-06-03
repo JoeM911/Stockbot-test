@@ -6,7 +6,7 @@ import Orders from './components/Orders';
 import NewsPanel from './components/NewsPanel';
 import BotActivity from './components/BotActivity';
 import GrowthChart from './components/GrowthChart';
-import TargetPanel from './components/TargetPanel';
+import SentimentPanel from './components/SentimentPanel';
 import Scanner from './components/Scanner';
 import Watchlist from './components/Watchlist';
 
@@ -23,6 +23,7 @@ export default function App() {
   const [targets, setTargets]       = useState([]);
   const [alerts, setAlerts]         = useState([]);
   const [botStatus, setBotStatus]   = useState(null);
+  const [sentiment, setSentiment]   = useState(null);
   const [activeSymbol, setActiveSymbol] = useState('AAPL');
   const [timeframe, setTimeframe]   = useState('1D');
   const [chartData, setChartData]   = useState({ bars: [], indicators: {} });
@@ -50,6 +51,7 @@ export default function App() {
         case 'news':         setNews(msg.data); break;
         case 'signals':      setSignals(msg.data); break;
         case 'bot_status':   setBotStatus(msg.data); break;
+        case 'sentiment':    setSentiment(msg.data); break;
         case 'bot_activity':
           setBotStatus(prev => prev ? {
             ...prev,
@@ -146,6 +148,7 @@ export default function App() {
         {/* RIGHT */}
         <div className="right-panel">
           <GrowthChart />
+          <SentimentPanel sentiment={sentiment} onSelect={setActiveSymbol} />
           <Scanner signals={signals} onSelect={setActiveSymbol} />
           <NewsPanel news={news} onSelect={setActiveSymbol} />
         </div>

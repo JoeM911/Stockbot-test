@@ -8,9 +8,10 @@ from typing import List
 
 
 class AutoTrader:
-    def __init__(self, alpaca_client, scanner):
+    def __init__(self, alpaca_client, scanner, sentiment=None):
         self.alpaca = alpaca_client
         self.scanner = scanner
+        self.sentiment = sentiment
         self.enabled = True
         self.max_positions = 5
         self.risk_pct = 0.05       # 5% of buying power per trade
@@ -75,15 +76,42 @@ class AutoTrader:
             if not candidates:
                 return
 
+            # Boost score with sentiment — prefer stocks with bullish social signal
+            sent_map: dict = {}
+            if self.sentiment:
+                try:
+                    syms = [c["symbol"] for c in candidates[:10]]
+                    sent_scores = await self.sentiment.scan_sentiment(syms)
+                    sent_map = {s["symbol"]: s["score"] for s in sent_scores}
+                except Exception:
+                    pass
+
+            def rank(sig):
+                tech_score = abs(sig.get("change_pct", 0)) + (1 if sig.get("rsi", 50) < 35 else 0)
+                social_score = sent_map.get(sig["symbol"], 0)
+                return tech_score + social_score * 2  # social counts double
+
+            candidates.sort(key=rank, reverse=True)
             best = candidates[0]
-            sym = best["symbol"]
+
+            # Skip if sentiment is strongly bearish (score < -0.3)
+            if sent_map.get(best["symbol"], 0) < -0.3:
+                return
+
+            sym   = best["symbol"]
             price = best["price"]
             if price <= 0:
                 return
 
+            reasons = list(best["signals"])
+            s_score = sent_map.get(sym)
+            if s_score is not None:
+                pct = round(abs(s_score) * 100)
+                reasons.append(f"{'Bullish' if s_score > 0 else 'Bearish'} sentiment {pct}%")
+
             trade_usd = min(buying_power * self.risk_pct, self.max_trade_usd)
             qty = max(1, int(trade_usd / price))
-            await self._enter(sym, qty, price, best["signals"], manager)
+            await self._enter(sym, qty, price, reasons, manager)
 
         except Exception as e:
             print(f"[AutoTrader] {e}")
