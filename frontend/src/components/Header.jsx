@@ -41,7 +41,7 @@ function useClock() {
   return time;
 }
 
-export default function Header({ account, connected, alerts }) {
+export default function Header({ account, connected, alerts, botEnabled }) {
   const marketStatus = useMarketStatus();
   const clock = useClock();
   const tradingMode = (import.meta.env.VITE_TRADING_MODE || 'manual').toLowerCase();
@@ -99,9 +99,11 @@ export default function Header({ account, connected, alerts }) {
           </div>
         )}
 
-        <span className={`mode-badge mode-${tradingMode}`}>
-          {tradingMode.toUpperCase()}
-        </span>
+        {botEnabled != null && (
+          <span className={`mode-badge ${botEnabled ? 'mode-all' : 'mode-manual'}`}>
+            BOT {botEnabled ? 'ON' : 'OFF'}
+          </span>
+        )}
 
         <span className={`market-badge ${marketStatus === 'OPEN' ? 'open' : 'closed'}`}>
           {marketStatus}

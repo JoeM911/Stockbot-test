@@ -4,12 +4,12 @@ import Chart from './components/Chart';
 import Positions from './components/Positions';
 import Orders from './components/Orders';
 import NewsPanel from './components/NewsPanel';
-import OrderEntry from './components/OrderEntry';
+import BotActivity from './components/BotActivity';
 import TargetPanel from './components/TargetPanel';
 import Scanner from './components/Scanner';
 import Watchlist from './components/Watchlist';
 
-const API = '';  // proxied via vite
+const API = '';
 const WS_URL = `ws://${window.location.host}/ws`;
 
 export default function App() {
@@ -21,12 +21,13 @@ export default function App() {
   const [signals, setSignals]       = useState([]);
   const [targets, setTargets]       = useState([]);
   const [alerts, setAlerts]         = useState([]);
+  const [botStatus, setBotStatus]   = useState(null);
   const [activeSymbol, setActiveSymbol] = useState('AAPL');
   const [timeframe, setTimeframe]   = useState('1D');
   const [chartData, setChartData]   = useState({ bars: [], indicators: {} });
   const [connected, setConnected]   = useState(false);
 
-  const wsRef = useRef(null);
+  const wsRef    = useRef(null);
   const reconnRef = useRef(null);
 
   const connectWS = useCallback(() => {
@@ -41,12 +42,19 @@ export default function App() {
     ws.onmessage = (e) => {
       const msg = JSON.parse(e.data);
       switch (msg.type) {
-        case 'account':   setAccount(msg.data); break;
-        case 'positions': setPositions(msg.data); break;
-        case 'orders':    setOrders(msg.data); break;
-        case 'quotes':    setQuotes(msg.data); break;
-        case 'news':      setNews(msg.data); break;
-        case 'signals':   setSignals(msg.data); break;
+        case 'account':      setAccount(msg.data); break;
+        case 'positions':    setPositions(msg.data); break;
+        case 'orders':       setOrders(msg.data); break;
+        case 'quotes':       setQuotes(msg.data); break;
+        case 'news':         setNews(msg.data); break;
+        case 'signals':      setSignals(msg.data); break;
+        case 'bot_status':   setBotStatus(msg.data); break;
+        case 'bot_activity':
+          setBotStatus(prev => prev ? {
+            ...prev,
+            activity: [msg.data, ...(prev.activity ?? [])].slice(0, 100),
+          } : prev);
+          break;
         case 'chart':
           setChartData({ bars: msg.bars, indicators: msg.indicators || {} });
           break;
@@ -66,20 +74,19 @@ export default function App() {
 
   useEffect(() => {
     connectWS();
-    return () => {
-      clearTimeout(reconnRef.current);
-      wsRef.current?.close();
-    };
+    return () => { clearTimeout(reconnRef.current); wsRef.current?.close(); };
   }, [connectWS]);
+
+  // Load bot status on mount
+  useEffect(() => {
+    fetch(`${API}/api/bot/status`).then(r => r.json()).then(setBotStatus).catch(() => {});
+  }, []);
 
   const loadChart = useCallback(async (symbol, tf) => {
     try {
       const res = await fetch(`${API}/api/bars/${symbol}?timeframe=${tf}&limit=200`);
-      const data = await res.json();
-      setChartData(data);
-    } catch (e) {
-      console.error('Chart load error:', e);
-    }
+      setChartData(await res.json());
+    } catch {}
   }, []);
 
   useEffect(() => {
@@ -90,43 +97,20 @@ export default function App() {
   }, [activeSymbol, timeframe, loadChart]);
 
   const loadTargets = useCallback(async () => {
-    try {
-      const res = await fetch(`${API}/api/targets`);
-      setTargets(await res.json());
-    } catch {}
+    try { setTargets(await (await fetch(`${API}/api/targets`)).json()); } catch {}
   }, []);
-
   useEffect(() => { loadTargets(); }, [loadTargets]);
 
-  const placeOrder = async (order) => {
-    const res = await fetch(`${API}/api/orders`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(order),
-    });
-    return res.json();
-  };
-
-  const sendCommand = async (command) => {
-    const res = await fetch(`${API}/api/command`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ command }),
-    });
-    return res.json();
-  };
-
-  const selectSymbol = (symbol) => {
-    setActiveSymbol(symbol);
+  const toggleBot = async () => {
+    const res = await fetch(`${API}/api/bot/toggle`, { method: 'POST' });
+    setBotStatus(await res.json().catch(() => ({})));
+    // Refresh full status
+    fetch(`${API}/api/bot/status`).then(r => r.json()).then(setBotStatus).catch(() => {});
   };
 
   return (
     <div className="terminal">
-      <Header
-        account={account}
-        connected={connected}
-        alerts={alerts}
-      />
+      <Header account={account} connected={connected} alerts={alerts} botEnabled={botStatus?.enabled} />
 
       <div className="terminal-body">
         {/* LEFT */}
@@ -135,12 +119,9 @@ export default function App() {
             quotes={quotes}
             positions={positions}
             activeSymbol={activeSymbol}
-            onSelect={selectSymbol}
+            onSelect={setActiveSymbol}
           />
-          <Positions
-            positions={positions}
-            onSelect={selectSymbol}
-          />
+          <Positions positions={positions} onSelect={setActiveSymbol} />
           <Orders orders={orders.slice(0, 12)} />
         </div>
 
@@ -154,13 +135,10 @@ export default function App() {
             onTimeframeChange={setTimeframe}
             currentQuote={quotes[activeSymbol]}
           />
-          <OrderEntry
-            symbol={activeSymbol}
-            account={account}
-            currentQuote={quotes[activeSymbol]}
-            onPlaceOrder={placeOrder}
-            onCommand={sendCommand}
-            onSymbolChange={selectSymbol}
+          <BotActivity
+            botStatus={botStatus}
+            onToggle={toggleBot}
+            onSelect={setActiveSymbol}
           />
         </div>
 
@@ -172,8 +150,8 @@ export default function App() {
             apiBase={API}
             currentQuotes={quotes}
           />
-          <Scanner signals={signals} onSelect={selectSymbol} />
-          <NewsPanel news={news} onSelect={selectSymbol} />
+          <Scanner signals={signals} onSelect={setActiveSymbol} />
+          <NewsPanel news={news} onSelect={setActiveSymbol} />
         </div>
       </div>
     </div>

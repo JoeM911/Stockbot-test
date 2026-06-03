@@ -14,6 +14,7 @@ from news import fetch_news
 import mock_data
 from scanner import Scanner
 from target_manager import TargetManager
+from auto_trader import AutoTrader
 from strategies.day_trader import DayTrader
 from strategies.swing_trader import SwingTrader
 
@@ -28,6 +29,16 @@ scanner = Scanner(alpaca)
 target_mgr = TargetManager()
 day_trader = DayTrader(alpaca)
 swing_trader = SwingTrader(alpaca)
+auto_trader = AutoTrader(alpaca, scanner)
+
+# Expanded universe — more stocks = more signals for the auto-trader
+UNIVERSE: List[str] = [
+    "AAPL","MSFT","NVDA","TSLA","GOOGL","META","AMZN","AMD","SPY","QQQ",
+    "PLTR","SOFI","COIN","NFLX","CRM","UBER","SNAP","RBLX","HOOD","RIVN",
+    "NIO","XPEV","MSTR","MARA","RIOT","SMCI","ARM","AVGO","MU","TSM",
+    "INTC","ORCL","IBM","ABNB","DKNG","PENN","LCID","F","GM","GE",
+    "BAC","JPM","GS","MS","WFC","XOM","CVX","OXY","SLB","HAL",
+]
 
 WATCHLIST: List[str] = os.getenv(
     "WATCHLIST",
@@ -104,13 +115,23 @@ async def scanner_loop():
     while True:
         try:
             if DEMO_MODE:
-                signals = mock_data.get_scanner_signals(WATCHLIST)
+                signals = mock_data.get_scanner_signals(UNIVERSE)
             else:
-                signals = await scanner.scan(WATCHLIST)
+                signals = await scanner.scan(UNIVERSE)
             if signals:
                 await manager.broadcast({"type": "signals", "data": signals})
         except Exception as e:
             print(f"[scanner_loop] {e}")
+        await asyncio.sleep(60)
+
+
+async def auto_trader_loop():
+    while True:
+        try:
+            if not DEMO_MODE:
+                await auto_trader.run(UNIVERSE, manager)
+        except Exception as e:
+            print(f"[auto_trader_loop] {e}")
         await asyncio.sleep(60)
 
 
@@ -144,6 +165,7 @@ async def news_loop():
 async def lifespan(app: FastAPI):
     asyncio.create_task(broadcast_loop())
     asyncio.create_task(scanner_loop())
+    asyncio.create_task(auto_trader_loop())
     asyncio.create_task(strategy_loop())
     asyncio.create_task(news_loop())
     yield
@@ -296,7 +318,40 @@ async def get_news():
 
 @app.get("/api/scanner")
 async def get_scanner():
-    return mock_data.get_scanner_signals(WATCHLIST) if DEMO_MODE else await scanner.scan(WATCHLIST)
+    return mock_data.get_scanner_signals(UNIVERSE) if DEMO_MODE else await scanner.scan(UNIVERSE)
+
+
+@app.get("/api/bot/status")
+async def bot_status():
+    return auto_trader.get_status()
+
+
+@app.post("/api/bot/toggle")
+async def bot_toggle():
+    enabled = auto_trader.toggle()
+    await manager.broadcast({"type": "bot_status", "data": auto_trader.get_status()})
+    return {"enabled": enabled}
+
+
+class BotSettingsRequest(BaseModel):
+    max_positions: int | None = None
+    risk_pct: float | None = None
+    stop_pct: float | None = None
+    target_pct: float | None = None
+
+
+@app.post("/api/bot/settings")
+async def bot_settings(req: BotSettingsRequest):
+    if req.max_positions is not None:
+        auto_trader.max_positions = max(1, min(req.max_positions, 20))
+    if req.risk_pct is not None:
+        auto_trader.risk_pct = max(0.01, min(req.risk_pct, 0.25))
+    if req.stop_pct is not None:
+        auto_trader.stop_pct = max(0.01, min(req.stop_pct, 0.20))
+    if req.target_pct is not None:
+        auto_trader.target_pct = max(0.01, min(req.target_pct, 0.50))
+    await manager.broadcast({"type": "bot_status", "data": auto_trader.get_status()})
+    return auto_trader.get_status()
 
 
 class CommandRequest(BaseModel):
