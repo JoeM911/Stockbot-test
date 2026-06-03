@@ -32,7 +32,7 @@ Set-Location ..
 Write-Host "[3/3] Starting React frontend on :5173..." -ForegroundColor Green
 Set-Location frontend
 npm install --silent
-$frontend = Start-Process -FilePath "npm" -ArgumentList "run","dev" -NoNewWindow -PassThru
+$frontend = Start-Process -FilePath "cmd" -ArgumentList "/c","npm","run","dev" -NoNewWindow -PassThru
 Set-Location ..
 
 Start-Sleep -Seconds 3
