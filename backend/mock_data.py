@@ -1,35 +1,92 @@
 """
-Mock data provider used when Alpaca API is unavailable (demo / network-blocked environments).
-Generates realistic-looking but entirely fake market data that refreshes over time.
+Mock/demo data provider. Uses real current prices from Yahoo Finance as the
+base so the terminal shows accurate prices even without Alpaca keys. If Yahoo
+Finance is unavailable, falls back to hardcoded approximate values.
 """
 import math
 import random
+import threading
 import time
 from datetime import datetime, timezone, timedelta
 from typing import List, Dict
 
-
-# Seed prices — realistic ballpark values
-_BASE = {
+# Fallback prices (used only if yfinance fetch fails)
+_FALLBACK = {
     "AAPL": 213.50, "MSFT": 442.80, "NVDA": 137.20, "TSLA": 248.60,
     "GOOGL": 178.40, "META": 612.30, "AMD": 162.10, "SPY": 589.20,
     "QQQ": 511.70, "AMZN": 222.90, "PLTR": 38.40, "SOFI": 14.20,
     "COIN": 264.80,
 }
 
-# Keep a running price state so it drifts realistically
-_prices: Dict[str, float] = dict(_BASE)
+_BASE: Dict[str, float] = {}
+_prices: Dict[str, float] = {}
 _last_tick = 0.0
+_base_loaded = False
+
+
+def _load_real_prices():
+    """Fetch current prices from Yahoo Finance to seed the mock walk."""
+    global _BASE, _prices, _base_loaded
+    try:
+        import yfinance as yf
+        symbols = list(_FALLBACK.keys())
+        tickers = yf.download(
+            " ".join(symbols),
+            period="1d",
+            interval="1m",
+            progress=False,
+            auto_adjust=True,
+        )
+        close = tickers["Close"] if "Close" in tickers.columns.get_level_values(0) else tickers
+        fetched = {}
+        for sym in symbols:
+            try:
+                col = close[sym] if sym in close.columns else None
+                if col is not None:
+                    last = col.dropna().iloc[-1]
+                    if last > 0:
+                        fetched[sym] = round(float(last), 2)
+            except Exception:
+                pass
+        if fetched:
+            _BASE = {**_FALLBACK, **fetched}
+            _prices = dict(_BASE)
+            _base_loaded = True
+            print(f"[mock_data] Loaded {len(fetched)} real prices from Yahoo Finance")
+            return
+    except Exception as e:
+        print(f"[mock_data] Yahoo Finance unavailable ({e}), using fallback prices")
+
+    _BASE = dict(_FALLBACK)
+    _prices = dict(_FALLBACK)
+    _base_loaded = True
+
+
+# Load real prices in background so startup isn't blocked
+threading.Thread(target=_load_real_prices, daemon=True).start()
+
+
+def _ensure_loaded():
+    """Block briefly if the background price fetch hasn't completed yet."""
+    deadline = time.time() + 8
+    while not _base_loaded and time.time() < deadline:
+        time.sleep(0.05)
+    if not _base_loaded:
+        # Timed out — use fallback immediately
+        global _BASE, _prices
+        _BASE = dict(_FALLBACK)
+        _prices = dict(_FALLBACK)
 
 
 def _tick_prices():
     global _last_tick
+    _ensure_loaded()
     now = time.time()
     if now - _last_tick < 2:
         return
     _last_tick = now
     for sym in _prices:
-        drift = random.gauss(0, 0.0008)  # ±0.08% per tick
+        drift = random.gauss(0, 0.0008)
         _prices[sym] = round(_prices[sym] * (1 + drift), 2)
 
 
@@ -52,10 +109,14 @@ def get_account() -> dict:
 
 def get_positions() -> List[dict]:
     _tick_prices()
+    # Use real prices as entry basis so unrealized P&L isn't absurd
+    aapl_entry = round(_BASE.get("AAPL", 213.50) * 0.95, 2)
+    nvda_entry  = round(_BASE.get("NVDA", 137.20) * 0.92, 2)
+    tsla_entry  = round(_BASE.get("TSLA", 248.60) * 0.97, 2)
     mock_positions = [
-        ("AAPL", 50, 198.40),
-        ("NVDA", 30, 118.60),
-        ("TSLA", 20, 232.10),
+        ("AAPL", 50, aapl_entry),
+        ("NVDA", 30, nvda_entry),
+        ("TSLA", 20, tsla_entry),
     ]
     result = []
     for sym, qty, entry in mock_positions:
@@ -77,12 +138,17 @@ def get_positions() -> List[dict]:
 
 
 def get_recent_orders() -> List[dict]:
+    _ensure_loaded()
+    aapl_p = round(_BASE.get("AAPL", 198.40) * 0.95, 2)
+    nvda_p  = round(_BASE.get("NVDA", 118.60) * 0.92, 2)
+    tsla_p  = round(_BASE.get("TSLA", 241.80) * 0.97, 2)
+    spy_p   = round(_BASE.get("SPY",  588.40) * 0.99, 2)
     orders = [
-        ("AAPL", 50, "buy", "filled", 198.40, "2025-06-03T09:32:15Z"),
-        ("NVDA", 30, "buy", "filled", 118.60, "2025-06-03T09:45:22Z"),
-        ("TSLA", 10, "sell", "filled", 241.80, "2025-06-03T11:12:08Z"),
-        ("META", 5, "buy", "canceled", None, "2025-06-03T13:22:01Z"),
-        ("SPY", 10, "buy", "filled", 588.40, "2025-06-02T14:01:55Z"),
+        ("AAPL", 50, "buy",  "filled",   aapl_p, "2025-06-03T09:32:15Z"),
+        ("NVDA", 30, "buy",  "filled",   nvda_p, "2025-06-03T09:45:22Z"),
+        ("TSLA", 10, "sell", "filled",   tsla_p, "2025-06-03T11:12:08Z"),
+        ("META",  5, "buy",  "canceled", None,   "2025-06-03T13:22:01Z"),
+        ("SPY",  10, "buy",  "filled",   spy_p,  "2025-06-02T14:01:55Z"),
     ]
     return [
         {
@@ -104,7 +170,7 @@ def get_latest_quotes(symbols: List[str]) -> Dict[str, dict]:
     _tick_prices()
     result = {}
     for sym in symbols:
-        price = _prices.get(sym, 100.0)
+        price = _prices.get(sym, _BASE.get(sym, 100.0))
         spread = price * 0.0001
         result[sym] = {
             "symbol": sym,
@@ -116,12 +182,12 @@ def get_latest_quotes(symbols: List[str]) -> Dict[str, dict]:
 
 
 def get_bars(symbol: str, timeframe: str = "1D", limit: int = 200) -> List[dict]:
-    """Generate synthetic OHLCV bars using a random walk seeded by symbol."""
+    """Synthetic OHLCV bars seeded from real current price so charts look right."""
+    _ensure_loaded()
     base = _BASE.get(symbol, 100.0)
     seed = sum(ord(c) for c in symbol)
     rng = random.Random(seed)
 
-    # Determine bar interval in seconds
     tf_secs = {
         "1m": 60, "5m": 300, "15m": 900, "30m": 1800,
         "1H": 3600, "4H": 14400, "1D": 86400, "1W": 604800,
@@ -129,10 +195,10 @@ def get_bars(symbol: str, timeframe: str = "1D", limit: int = 200) -> List[dict]
     interval = tf_secs.get(timeframe, 86400)
 
     now = int(datetime.now(timezone.utc).replace(second=0, microsecond=0).timestamp())
-    # Align to interval boundary
     now = (now // interval) * interval
 
-    price = base * rng.uniform(0.6, 0.9)  # start lower so it trends up
+    # Start ~15% below current price and random-walk toward it
+    price = base * rng.uniform(0.82, 0.92)
     bars = []
 
     for i in range(limit, 0, -1):
@@ -141,7 +207,7 @@ def get_bars(symbol: str, timeframe: str = "1D", limit: int = 200) -> List[dict]
         open_ = price
         close = round(price * (1 + change), 2)
         high = round(max(open_, close) * rng.uniform(1.000, 1.012), 2)
-        low = round(min(open_, close) * rng.uniform(0.988, 1.000), 2)
+        low  = round(min(open_, close) * rng.uniform(0.988, 1.000), 2)
         volume = round(rng.uniform(8_000_000, 60_000_000))
         bars.append({"time": ts, "open": round(open_, 2), "high": high, "low": low, "close": close, "volume": volume})
         price = close
@@ -164,9 +230,9 @@ def get_scanner_signals(symbols: List[str]) -> List[dict]:
     result = []
     for sym in symbols:
         if sym in signals_map:
-            price = _prices.get(sym, 100.0)
-            base = _BASE.get(sym, price)
-            chg = (price - base) / base * 100
+            price = _prices.get(sym, _BASE.get(sym, 100.0))
+            base  = _BASE.get(sym, price)
+            chg   = (price - base) / base * 100
             result.append({
                 "symbol": sym,
                 "price": round(price, 2),
@@ -184,12 +250,12 @@ def get_news(symbols: List[str]) -> List[dict]:
         ("NVDA", "Nvidia data center revenue surges 400% year-over-year", "Bloomberg", "positive"),
         ("TSLA", "Tesla Cybertruck production ramp faces supply chain headwinds", "WSJ", "negative"),
         ("META", "Meta AI assistant reaches 1 billion monthly active users", "TechCrunch", "positive"),
-        ("SPY", "Fed signals patient approach to rate cuts amid sticky inflation", "FT", "neutral"),
+        ("SPY",  "Fed signals patient approach to rate cuts amid sticky inflation", "FT", "neutral"),
         ("MSFT", "Microsoft Azure growth accelerates on AI workload demand", "CNBC", "positive"),
-        ("GOOGL", "Alphabet Search revenue beats estimates despite AI competition", "Reuters", "positive"),
+        ("GOOGL","Alphabet Search revenue beats estimates despite AI competition", "Reuters", "positive"),
         ("COIN", "Coinbase reports record institutional trading volumes in Q2", "Bloomberg", "positive"),
         ("PLTR", "Palantir wins $650M DoD AI contract expansion", "DefenseNews", "positive"),
-        ("AMD", "AMD MI300X GPUs gaining traction among hyperscalers", "AnandTech", "positive"),
+        ("AMD",  "AMD MI300X GPUs gaining traction among hyperscalers", "AnandTech", "positive"),
     ]
     now = datetime.now(timezone.utc)
     return [
