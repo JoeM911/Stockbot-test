@@ -11,6 +11,7 @@ from pydantic import BaseModel
 from alpaca_client import AlpacaClient
 from indicators import compute_indicators
 from news import fetch_news
+import mock_data
 from scanner import Scanner
 from target_manager import TargetManager
 from strategies.day_trader import DayTrader
@@ -20,6 +21,7 @@ load_dotenv()
 
 API_KEY = os.getenv("ALPACA_API_KEY", "")
 SECRET_KEY = os.getenv("ALPACA_SECRET_KEY", "")
+DEMO_MODE = API_KEY in ("", "placeholder", "your_api_key_here")
 
 alpaca = AlpacaClient(API_KEY, SECRET_KEY)
 scanner = Scanner(alpaca)
@@ -72,12 +74,18 @@ manager = ConnectionManager()
 async def broadcast_loop():
     while True:
         try:
-            account, positions, orders = await asyncio.gather(
-                alpaca.get_account(),
-                alpaca.get_positions(),
-                alpaca.get_recent_orders(),
-            )
-            quotes = await alpaca.get_latest_quotes(WATCHLIST)
+            if DEMO_MODE:
+                account  = mock_data.get_account()
+                positions = mock_data.get_positions()
+                orders   = mock_data.get_recent_orders()
+                quotes   = mock_data.get_latest_quotes(WATCHLIST)
+            else:
+                account, positions, orders = await asyncio.gather(
+                    alpaca.get_account(),
+                    alpaca.get_positions(),
+                    alpaca.get_recent_orders(),
+                )
+                quotes = await alpaca.get_latest_quotes(WATCHLIST)
 
             await manager.broadcast({"type": "account", "data": account})
             await manager.broadcast({"type": "positions", "data": positions})
@@ -90,13 +98,16 @@ async def broadcast_loop():
 
         except Exception as e:
             print(f"[broadcast_loop] {e}")
-        await asyncio.sleep(5)
+        await asyncio.sleep(3)
 
 
 async def scanner_loop():
     while True:
         try:
-            signals = await scanner.scan(WATCHLIST)
+            if DEMO_MODE:
+                signals = mock_data.get_scanner_signals(WATCHLIST)
+            else:
+                signals = await scanner.scan(WATCHLIST)
             if signals:
                 await manager.broadcast({"type": "signals", "data": signals})
         except Exception as e:
@@ -120,7 +131,10 @@ async def strategy_loop():
 async def news_loop():
     while True:
         try:
-            news = await fetch_news(API_KEY, SECRET_KEY, WATCHLIST[:8])
+            if DEMO_MODE:
+                news = mock_data.get_news(WATCHLIST[:8])
+            else:
+                news = await fetch_news(API_KEY, SECRET_KEY, WATCHLIST[:8])
             await manager.broadcast({"type": "news", "data": news})
         except Exception as e:
             print(f"[news_loop] {e}")
@@ -158,7 +172,7 @@ async def websocket_endpoint(ws: WebSocket):
             if data.get("type") == "subscribe":
                 symbol = data.get("symbol", "AAPL").upper()
                 tf = data.get("timeframe", "1D")
-                bars = await alpaca.get_bars(symbol, tf, 200)
+                bars = mock_data.get_bars(symbol, tf, 200) if DEMO_MODE else await alpaca.get_bars(symbol, tf, 200)
                 indicators = compute_indicators(bars)
                 await ws.send_json({
                     "type": "chart",
@@ -178,24 +192,28 @@ async def websocket_endpoint(ws: WebSocket):
 
 @app.get("/api/account")
 async def get_account():
-    return await alpaca.get_account()
+    return mock_data.get_account() if DEMO_MODE else await alpaca.get_account()
 
 
 @app.get("/api/positions")
 async def get_positions():
-    return await alpaca.get_positions()
+    return mock_data.get_positions() if DEMO_MODE else await alpaca.get_positions()
 
 
 @app.get("/api/orders")
 async def get_orders():
-    return await alpaca.get_recent_orders()
+    return mock_data.get_recent_orders() if DEMO_MODE else await alpaca.get_recent_orders()
 
 
 @app.get("/api/bars/{symbol}")
 async def get_bars(symbol: str, timeframe: str = "1D", limit: int = 200):
-    bars = await alpaca.get_bars(symbol.upper(), timeframe, limit)
+    bars = mock_data.get_bars(symbol.upper(), timeframe, limit) if DEMO_MODE else await alpaca.get_bars(symbol.upper(), timeframe, limit)
     indicators = compute_indicators(bars)
     return {"bars": bars, "indicators": indicators}
+
+@app.get("/api/demo-mode")
+async def demo_mode_status():
+    return {"demo": DEMO_MODE}
 
 
 class OrderRequest(BaseModel):
@@ -210,10 +228,14 @@ class OrderRequest(BaseModel):
 
 @app.post("/api/orders")
 async def place_order(req: OrderRequest):
-    result = await alpaca.place_order(
-        req.symbol.upper(), req.qty, req.side,
-        req.type, req.limit_price, req.stop_price, req.time_in_force,
-    )
+    if DEMO_MODE:
+        result = {"id": "demo-" + req.symbol, "symbol": req.symbol.upper(),
+                  "qty": req.qty, "side": req.side, "type": req.type, "status": "filled"}
+    else:
+        result = await alpaca.place_order(
+            req.symbol.upper(), req.qty, req.side,
+            req.type, req.limit_price, req.stop_price, req.time_in_force,
+        )
     await manager.broadcast({"type": "order_placed", "data": result})
     return result
 
@@ -268,12 +290,12 @@ async def remove_watchlist(symbol: str):
 
 @app.get("/api/news")
 async def get_news():
-    return await fetch_news(API_KEY, SECRET_KEY, WATCHLIST[:8])
+    return mock_data.get_news(WATCHLIST[:8]) if DEMO_MODE else await fetch_news(API_KEY, SECRET_KEY, WATCHLIST[:8])
 
 
 @app.get("/api/scanner")
 async def get_scanner():
-    return await scanner.scan(WATCHLIST)
+    return mock_data.get_scanner_signals(WATCHLIST) if DEMO_MODE else await scanner.scan(WATCHLIST)
 
 
 class CommandRequest(BaseModel):
