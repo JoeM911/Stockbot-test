@@ -5,6 +5,7 @@ import Positions from './components/Positions';
 import Orders from './components/Orders';
 import NewsPanel from './components/NewsPanel';
 import BotActivity from './components/BotActivity';
+import GrowthChart from './components/GrowthChart';
 import TargetPanel from './components/TargetPanel';
 import Scanner from './components/Scanner';
 import Watchlist from './components/Watchlist';
@@ -144,12 +145,7 @@ export default function App() {
 
         {/* RIGHT */}
         <div className="right-panel">
-          <TargetPanel
-            targets={targets}
-            onRefresh={loadTargets}
-            apiBase={API}
-            currentQuotes={quotes}
-          />
+          <GrowthChart />
           <Scanner signals={signals} onSelect={setActiveSymbol} />
           <NewsPanel news={news} onSelect={setActiveSymbol} />
         </div>

@@ -31,6 +31,9 @@ day_trader = DayTrader(alpaca)
 swing_trader = SwingTrader(alpaca)
 auto_trader = AutoTrader(alpaca, scanner)
 
+# In-memory equity history for demo mode / live tracking (capped at 1440 pts)
+_equity_history: List[dict] = []
+
 # Expanded universe — more stocks = more signals for the auto-trader
 UNIVERSE: List[str] = [
     "AAPL","MSFT","NVDA","TSLA","GOOGL","META","AMZN","AMD","SPY","QQQ",
@@ -82,6 +85,7 @@ manager = ConnectionManager()
 # ---------------------------------------------------------------------------
 
 async def broadcast_loop():
+    _last_equity_record = 0.0
     while True:
         try:
             if DEMO_MODE:
@@ -105,6 +109,17 @@ async def broadcast_loop():
             hits = target_mgr.check_targets(quotes)
             for hit in hits:
                 await manager.broadcast({"type": "target_hit", "data": hit})
+
+            # Record equity every 5 minutes
+            import time as _time
+            now_ts = _time.time()
+            if now_ts - _last_equity_record >= 300 and account:
+                eq = account.get("equity") or account.get("portfolio_value")
+                if eq:
+                    _equity_history.append({"time": int(now_ts), "value": round(float(eq), 2)})
+                    if len(_equity_history) > 1440:
+                        _equity_history.pop(0)
+                _last_equity_record = now_ts
 
         except Exception as e:
             print(f"[broadcast_loop] {e}")
@@ -319,6 +334,20 @@ async def get_news():
 @app.get("/api/scanner")
 async def get_scanner():
     return mock_data.get_scanner_signals(UNIVERSE) if DEMO_MODE else await scanner.scan(UNIVERSE)
+
+
+@app.get("/api/portfolio/history")
+async def portfolio_history(period: str = "1M"):
+    if DEMO_MODE:
+        # Synthesise a growth curve from in-memory points or generate fake history
+        if len(_equity_history) >= 2:
+            return _equity_history
+        return mock_data.get_portfolio_history(period)
+    try:
+        return await alpaca.get_portfolio_history(period)
+    except Exception as e:
+        print(f"[portfolio_history] {e}")
+        return _equity_history
 
 
 @app.get("/api/bot/status")

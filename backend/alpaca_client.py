@@ -170,6 +170,21 @@ class AlpacaClient:
             for b in bar_list
         ]
 
+    async def get_portfolio_history(self, period: str = "1M", timeframe: str = "1D") -> List[dict]:
+        from alpaca.trading.requests import GetPortfolioHistoryRequest
+        tf_map = {"1D": "1H", "1W": "1D", "1M": "1D", "3M": "1D"}
+        req = GetPortfolioHistoryRequest(
+            period=period,
+            timeframe=tf_map.get(period, "1D"),
+            intraday_reporting="market_hours" if period == "1D" else None,
+        )
+        h = await asyncio.to_thread(self.trading.get_portfolio_history, filter=req)
+        result = []
+        for ts, eq in zip(h.timestamp, h.equity):
+            if eq is not None and eq > 0:
+                result.append({"time": int(ts.timestamp()) if hasattr(ts, "timestamp") else int(ts), "value": round(float(eq), 2)})
+        return result
+
     async def get_latest_quotes(self, symbols: List[str]) -> Dict[str, dict]:
         if not symbols:
             return {}

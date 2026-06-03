@@ -244,6 +244,25 @@ def get_scanner_signals(symbols: List[str]) -> List[dict]:
     return sorted(result, key=lambda x: abs(x["change_pct"]), reverse=True)
 
 
+def get_portfolio_history(period: str = "1M") -> List[dict]:
+    """Generate a realistic equity growth curve for demo mode."""
+    _ensure_loaded()
+    import random as _r
+    period_days = {"1D": 1, "1W": 7, "1M": 30, "3M": 90}.get(period, 30)
+    interval = 3600 if period_days <= 1 else 86400
+    points = min(period_days * (24 if period_days == 1 else 1), 200)
+    now = int(datetime.now(timezone.utc).timestamp())
+    now = (now // interval) * interval
+    rng = _r.Random(42)
+    equity = 120_000.0
+    result = []
+    for i in range(points, 0, -1):
+        ts = now - i * interval
+        equity *= 1 + rng.gauss(0.0005, 0.008)
+        result.append({"time": ts, "value": round(equity, 2)})
+    return result
+
+
 def get_news(symbols: List[str]) -> List[dict]:
     headlines = [
         ("AAPL", "Apple Intelligence features rolling out to more markets", "Reuters", "positive"),

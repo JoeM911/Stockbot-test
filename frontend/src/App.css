@@ -476,6 +476,33 @@ body {
   text-align: center;
 }
 
+/* ============================================================ GROWTH CHART */
+.growth-panel {
+  flex: 0 0 200px;
+  min-height: 200px;
+}
+
+.growth-stats {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  padding: 4px 10px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.growth-equity {
+  color: var(--text-hi);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.growth-chart-container {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+}
+
 /* ============================================================ BOT PANEL */
 .bot-panel {
   background: var(--bg-panel);
