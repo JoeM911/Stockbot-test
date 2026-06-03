@@ -153,7 +153,10 @@ class AlpacaClient:
             limit=limit,
         )
         bars = await asyncio.to_thread(self.data.get_stock_bars, req)
-        bar_list = bars.get(symbol, [])
+        try:
+            bar_list = bars[symbol]
+        except (KeyError, TypeError):
+            bar_list = []
 
         return [
             {
