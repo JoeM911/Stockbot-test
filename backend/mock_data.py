@@ -204,5 +204,5 @@ def get_news(symbols: List[str]) -> List[dict]:
             "sentiment": sentiment,
         }
         for i, (sym, headline, source, sentiment) in enumerate(headlines)
-        if sym in symbols or True
+        if sym in symbols
     ]

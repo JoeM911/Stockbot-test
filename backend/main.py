@@ -48,7 +48,6 @@ class ConnectionManager:
         self._active.append(ws)
 
     def disconnect(self, ws: WebSocket):
-        self._active.discard(ws) if hasattr(self._active, "discard") else None
         if ws in self._active:
             self._active.remove(ws)
 
@@ -242,6 +241,8 @@ async def place_order(req: OrderRequest):
 
 @app.delete("/api/orders/{order_id}")
 async def cancel_order(order_id: str):
+    if DEMO_MODE:
+        return {"id": order_id, "status": "canceled"}
     return await alpaca.cancel_order(order_id)
 
 
@@ -316,7 +317,10 @@ async def process_command(req: CommandRequest):
             sym, qty = parts[1], float(parts[2])
             order_type = parts[3] if len(parts) > 3 else "market"
             limit_price = float(parts[4]) if len(parts) > 4 else None
-            result = await alpaca.place_order(sym, qty, "buy", order_type.lower(), limit_price)
+            if DEMO_MODE:
+                result = {"id": f"demo-{sym}", "symbol": sym, "qty": qty, "side": "buy", "type": order_type.lower(), "status": "filled"}
+            else:
+                result = await alpaca.place_order(sym, qty, "buy", order_type.lower(), limit_price)
             await manager.broadcast({"type": "order_placed", "data": result})
             return {"ok": True, "message": f"BUY {qty} {sym}", "order": result}
 
@@ -324,7 +328,10 @@ async def process_command(req: CommandRequest):
             sym, qty = parts[1], float(parts[2])
             order_type = parts[3] if len(parts) > 3 else "market"
             limit_price = float(parts[4]) if len(parts) > 4 else None
-            result = await alpaca.place_order(sym, qty, "sell", order_type.lower(), limit_price)
+            if DEMO_MODE:
+                result = {"id": f"demo-{sym}", "symbol": sym, "qty": qty, "side": "sell", "type": order_type.lower(), "status": "filled"}
+            else:
+                result = await alpaca.place_order(sym, qty, "sell", order_type.lower(), limit_price)
             await manager.broadcast({"type": "order_placed", "data": result})
             return {"ok": True, "message": f"SELL {qty} {sym}", "order": result}
 
@@ -348,11 +355,17 @@ async def process_command(req: CommandRequest):
 
         elif cmd == "CLOSE" and len(parts) >= 2:
             sym = parts[1]
-            positions = await alpaca.get_positions()
+            if DEMO_MODE:
+                positions = mock_data.get_positions()
+            else:
+                positions = await alpaca.get_positions()
             pos = next((p for p in positions if p["symbol"] == sym), None)
             if not pos:
                 return {"error": f"No open position in {sym}"}
-            result = await alpaca.place_order(sym, abs(pos["qty"]), "sell", "market")
+            if DEMO_MODE:
+                result = {"id": f"demo-{sym}", "symbol": sym, "qty": pos["qty"], "side": "sell", "type": "market", "status": "filled"}
+            else:
+                result = await alpaca.place_order(sym, abs(pos["qty"]), "sell", "market")
             return {"ok": True, "message": f"Closing {sym}", "order": result}
 
         else:

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 const COMMANDS_HELP = 'BUY AAPL 10 | SELL TSLA 5 | TARGET AAPL 200 above | ADD NVDA | REMOVE NVDA | CLOSE AAPL';
 
@@ -13,6 +13,8 @@ export default function OrderEntry({ symbol, account, currentQuote, onPlaceOrder
   const [isError, setIsError]  = useState(false);
   const [cmdInput, setCmdInput] = useState('');
   const [loading, setLoading]  = useState(false);
+
+  useEffect(() => { setSym(symbol); }, [symbol]);
 
   const price = currentQuote?.price;
 
