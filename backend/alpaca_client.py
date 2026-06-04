@@ -15,10 +15,14 @@ from alpaca.data.timeframe import TimeFrame, TimeFrameUnit
 
 class AlpacaClient:
     def __init__(self, api_key: str, secret_key: str):
-        self.trading = TradingClient(api_key, secret_key, paper=True)
-        self.data = StockHistoricalDataClient(api_key, secret_key)
         self.api_key = api_key
         self.secret_key = secret_key
+        if api_key and secret_key:
+            self.trading = TradingClient(api_key, secret_key, paper=True)
+            self.data = StockHistoricalDataClient(api_key, secret_key)
+        else:
+            self.trading = None
+            self.data = None
 
     async def get_account(self) -> dict:
         account = await asyncio.to_thread(self.trading.get_account)
