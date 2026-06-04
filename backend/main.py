@@ -513,6 +513,17 @@ async def set_bot_mode(req: ModeRequest):
     return auto_trader.get_status()
 
 
+class TradeStyleRequest(BaseModel):
+    style: str  # "swing" or "day"
+
+
+@app.post("/api/bot/trade-style")
+async def set_trade_style(req: TradeStyleRequest):
+    auto_trader.set_trade_style(req.style)
+    await manager.broadcast({"type": "bot_status", "data": auto_trader.get_status()})
+    return auto_trader.get_status()
+
+
 class CommandRequest(BaseModel):
     command: str
 

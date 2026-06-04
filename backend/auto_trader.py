@@ -28,6 +28,7 @@ class AutoTrader:
         self.stop_pct      = 0.03
         self.target_pct    = 0.06
         self.portfolio_target: float | None = None
+        self.trade_style = "swing"   # "swing" or "day"
         self.activity: List[dict] = []
 
     # ------------------------------------------------------------------ public
@@ -59,6 +60,9 @@ class AutoTrader:
     def set_mode(self, mode: str):
         self.mode = mode if mode in ("long", "short", "both") else "both"
 
+    def set_trade_style(self, style: str):
+        self.trade_style = style if style in ("swing", "day") else "swing"
+
     def toggle(self) -> bool:
         self.enabled = not self.enabled
         return self.enabled
@@ -74,6 +78,7 @@ class AutoTrader:
             "target_pct":       self.target_pct,
             "max_trade_usd":    self.max_trade_usd,
             "portfolio_target": self.portfolio_target,
+            "trade_style":      self.trade_style,
             "activity":         self.activity[:30],
         }
 
@@ -83,7 +88,12 @@ class AutoTrader:
         session = self.session_type()
         if session == "closed":
             return
-        extended = session in ("pre_market", "after_hours")
+
+        # Day trading only runs during regular market hours
+        if self.trade_style == "day" and session != "regular":
+            return
+
+        extended = (self.trade_style == "swing") and session in ("pre_market", "after_hours")
 
         try:
             account      = await self.alpaca.get_account()
@@ -95,6 +105,22 @@ class AutoTrader:
             longs  = {p["symbol"]: p for p in positions if float(p["qty"]) > 0}
             shorts = {p["symbol"]: p for p in positions if float(p["qty"]) < 0}
             held   = {p["symbol"]: p for p in positions}
+
+            # ---- Day trade: flatten all positions before 3:45pm ET ----------
+            if self.trade_style == "day" and held:
+                if _ET:
+                    now_et = datetime.now(_ET)
+                else:
+                    from datetime import timedelta
+                    now_et = datetime.now(timezone(timedelta(hours=-4)))
+                if now_et.hour * 60 + now_et.minute >= 15 * 60 + 45:
+                    for sym, pos in list(held.items()):
+                        qty = float(pos["qty"])
+                        if qty > 0:
+                            await self._close_long(sym, qty, "Day trade — flat before close", manager)
+                        else:
+                            await self._cover_short(sym, qty, "Day trade — flat before close", manager)
+                    return
 
             # ---- EXIT longs: stop-loss or take-profit -----------------------
             for sym, pos in list(longs.items()):
@@ -131,7 +157,10 @@ class AutoTrader:
                 return
 
             # ---- Scan for signals -------------------------------------------
-            signals = await self.scanner.scan(universe)
+            if self.trade_style == "day":
+                signals = await self.scanner.scan_intraday(universe)
+            else:
+                signals = await self.scanner.scan(universe)
 
             # Filter by mode and availability
             long_candidates  = [s for s in signals if s["action"] == "BUY"   and s["symbol"] not in held]
@@ -143,10 +172,10 @@ class AutoTrader:
             if not long_candidates and not short_candidates:
                 return
 
-            # ---- Sentiment boost -------------------------------------------
+            # ---- Sentiment boost (swing only — too slow for day trading) ---
             all_candidates = long_candidates + short_candidates
             sent_map: dict = {}
-            if self.sentiment:
+            if self.sentiment and self.trade_style == "swing":
                 try:
                     syms = [c["symbol"] for c in all_candidates[:10]]
                     sent_scores = await self.sentiment.scan_sentiment(syms)

@@ -43,6 +43,7 @@ export default function BotActivity({ botStatus, account, onToggle, onSelect }) 
   const activity   = botStatus?.activity ?? [];
   const aggression = botStatus?.aggression ?? 5;
   const mode       = botStatus?.mode ?? 'both';
+  const tradeStyle = botStatus?.trade_style ?? 'swing';
   const [dragging, setDragging]     = useState(false);
   const [localAgg, setLocalAgg]     = useState(null);
   const [targetInput, setTargetInput] = useState('');
@@ -53,6 +54,14 @@ export default function BotActivity({ botStatus, account, onToggle, onSelect }) 
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ mode: m }),
+    });
+  };
+
+  const setStyle = async (s) => {
+    await fetch('/api/bot/trade-style', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ style: s }),
     });
   };
 
@@ -148,6 +157,27 @@ export default function BotActivity({ botStatus, account, onToggle, onSelect }) 
             {MODE_LABELS[m]}
           </button>
         ))}
+      </div>
+
+      {/* Trade style toggle */}
+      <div className="bot-mode-row">
+        <span className="dim" style={{ fontSize: 8, whiteSpace: 'nowrap' }}>STYLE</span>
+        {['swing', 'day'].map(s => (
+          <button
+            key={s}
+            className={`mode-btn ${tradeStyle === s ? 'active' : ''}`}
+            style={tradeStyle === s ? {
+              color: s === 'day' ? '#ff6d00' : '#00bcd4',
+              borderColor: s === 'day' ? '#ff6d00' : '#00bcd4',
+            } : {}}
+            onClick={() => setStyle(s)}
+          >
+            {s === 'day' ? 'DAY TRADE' : 'SWING'}
+          </button>
+        ))}
+        {tradeStyle === 'day' && (
+          <span style={{ fontSize: 7, color: '#ff6d00', marginLeft: 'auto' }}>FLAT @3:45PM</span>
+        )}
       </div>
 
       {/* Settings summary */}
