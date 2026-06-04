@@ -157,25 +157,24 @@ async def auto_trader_loop():
 
 
 async def sentiment_loop():
+    first_run = True
     while True:
+        if not first_run:
+            await asyncio.sleep(300)  # every 5 minutes after first run
+        first_run = False
         try:
-            trending  = await sentiment_analyzer.get_trending()
-            reddit    = await sentiment_analyzer.get_reddit_mentions()
-            # Score sentiment for trending + top universe symbols
-            hot_syms  = list({s["symbol"] for s in trending[:10]} |
-                             set(UNIVERSE[:20]))
-            scores    = await sentiment_analyzer.scan_sentiment(hot_syms)
-            await manager.broadcast({
-                "type": "sentiment",
-                "data": {
-                    "scores":   scores,
-                    "trending": trending[:15],
-                    "reddit":   reddit[:15],
-                },
-            })
+            trending = await sentiment_analyzer.get_trending()
+            reddit   = await sentiment_analyzer.get_reddit_mentions()
+            hot_syms = list({s["symbol"] for s in trending[:10]} | set(UNIVERSE[:20]))
+            scores   = await sentiment_analyzer.scan_sentiment(hot_syms)
         except Exception as e:
-            print(f"[sentiment_loop] {e}")
-        await asyncio.sleep(300)  # every 5 minutes
+            print(f"[sentiment_loop] fetch error: {e}")
+            trending, reddit, scores = [], [], []
+        # Always broadcast even with empty data so panel stops showing "loading"
+        await manager.broadcast({
+            "type": "sentiment",
+            "data": {"scores": scores, "trending": trending[:15], "reddit": reddit[:15]},
+        })
 
 
 async def strategy_loop():
@@ -473,6 +472,18 @@ async def bot_settings(req: BotSettingsRequest):
         auto_trader.stop_pct = max(0.01, min(req.stop_pct, 0.20))
     if req.target_pct is not None:
         auto_trader.target_pct = max(0.01, min(req.target_pct, 0.50))
+    await manager.broadcast({"type": "bot_status", "data": auto_trader.get_status()})
+    return auto_trader.get_status()
+
+
+class AggressionRequest(BaseModel):
+    level: int  # 1-10
+
+
+@app.post("/api/bot/aggression")
+async def set_aggression(req: AggressionRequest):
+    level = max(1, min(req.level, 10))
+    auto_trader.set_aggression(level)
     await manager.broadcast({"type": "bot_status", "data": auto_trader.get_status()})
     return auto_trader.get_status()
 

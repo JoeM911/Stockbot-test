@@ -20,6 +20,7 @@ class AutoTrader:
         self.scanner = scanner
         self.sentiment = sentiment
         self.enabled = True
+        self.aggression = 5        # 1 (safe) → 10 (yolo)
         self.max_positions = 5
         self.risk_pct = 0.05       # 5% of buying power per trade
         self.max_trade_usd = 10_000
@@ -53,6 +54,16 @@ class AutoTrader:
             return "after_hours"
         return "closed"
 
+    def set_aggression(self, level: int):
+        """Map 1-10 aggression level to trading parameters."""
+        self.aggression = level
+        t = (level - 1) / 9.0  # 0.0 → 1.0
+        self.risk_pct      = round(0.02 + t * 0.13, 3)   # 2% → 15%
+        self.stop_pct      = round(0.02 + t * 0.04, 3)   # 2% → 6%
+        self.target_pct    = round(0.04 + t * 0.10, 3)   # 4% → 14%
+        self.max_positions = max(2, round(3 + t * 7))     # 3  → 10
+        self.max_trade_usd = round(5_000 + t * 45_000)   # $5k → $50k
+
     def toggle(self) -> bool:
         self.enabled = not self.enabled
         return self.enabled
@@ -60,10 +71,12 @@ class AutoTrader:
     def get_status(self) -> dict:
         return {
             "enabled": self.enabled,
+            "aggression": self.aggression,
             "max_positions": self.max_positions,
             "risk_pct": self.risk_pct,
             "stop_pct": self.stop_pct,
             "target_pct": self.target_pct,
+            "max_trade_usd": self.max_trade_usd,
             "activity": self.activity[:30],
         }
 
