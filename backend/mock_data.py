@@ -18,17 +18,19 @@ _FALLBACK = {
     "COIN": 264.80,
 }
 
-_BASE: Dict[str, float] = {}
-_prices: Dict[str, float] = {}
+# Start with fallback prices immediately — no blocking on startup
+_BASE: Dict[str, float] = dict(_FALLBACK)
+_prices: Dict[str, float] = dict(_FALLBACK)
 _last_tick = 0.0
-_base_loaded = False
 
 
-def _load_real_prices():
-    """Fetch current prices from Yahoo Finance to seed the mock walk."""
-    global _BASE, _prices, _base_loaded
+def _try_update_real_prices():
+    """Background thread: try to refresh prices from Yahoo Finance (best-effort)."""
+    global _BASE, _prices
     try:
         import yfinance as yf
+        import signal as _sig
+
         symbols = list(_FALLBACK.keys())
         tickers = yf.download(
             " ".join(symbols),
@@ -36,6 +38,7 @@ def _load_real_prices():
             interval="1m",
             progress=False,
             auto_adjust=True,
+            timeout=10,
         )
         close = tickers["Close"] if "Close" in tickers.columns.get_level_values(0) else tickers
         fetched = {}
@@ -50,32 +53,18 @@ def _load_real_prices():
                 pass
         if fetched:
             _BASE = {**_FALLBACK, **fetched}
-            _prices = dict(_BASE)
-            _base_loaded = True
-            print(f"[mock_data] Loaded {len(fetched)} real prices from Yahoo Finance")
-            return
+            _prices = {**_prices, **fetched}
+            print(f"[mock_data] Updated {len(fetched)} prices from Yahoo Finance")
     except Exception as e:
-        print(f"[mock_data] Yahoo Finance unavailable ({e}), using fallback prices")
-
-    _BASE = dict(_FALLBACK)
-    _prices = dict(_FALLBACK)
-    _base_loaded = True
+        print(f"[mock_data] Yahoo Finance skipped ({e})")
 
 
-# Load real prices in background so startup isn't blocked
-threading.Thread(target=_load_real_prices, daemon=True).start()
+# Best-effort price refresh — app works immediately with fallback prices
+threading.Thread(target=_try_update_real_prices, daemon=True).start()
 
 
 def _ensure_loaded():
-    """Block briefly if the background price fetch hasn't completed yet."""
-    deadline = time.time() + 8
-    while not _base_loaded and time.time() < deadline:
-        time.sleep(0.05)
-    if not _base_loaded:
-        # Timed out — use fallback immediately
-        global _BASE, _prices
-        _BASE = dict(_FALLBACK)
-        _prices = dict(_FALLBACK)
+    pass  # prices always ready immediately
 
 
 def _tick_prices():
