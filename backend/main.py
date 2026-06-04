@@ -1,11 +1,14 @@
 import asyncio
 import os
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import List
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from alpaca_client import AlpacaClient
@@ -21,8 +24,9 @@ from strategies.swing_trader import SwingTrader
 
 load_dotenv()
 
-API_KEY = os.getenv("ALPACA_API_KEY", "")
+API_KEY    = os.getenv("ALPACA_API_KEY", "")
 SECRET_KEY = os.getenv("ALPACA_SECRET_KEY", "")
+DASHBOARD_PASSWORD = os.getenv("DASHBOARD_PASSWORD", "")  # set in Railway env vars
 DEMO_MODE = API_KEY in ("", "placeholder", "your_api_key_here")
 
 alpaca = AlpacaClient(API_KEY, SECRET_KEY)
@@ -222,6 +226,62 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ── Password protection middleware ──────────────────────────────────────────
+AUTH_COOKIE = "sb_auth"
+
+@app.middleware("http")
+async def auth_middleware(request: Request, call_next):
+    if not DASHBOARD_PASSWORD:
+        return await call_next(request)
+
+    path = request.url.path
+
+    # Always allow the login endpoints through
+    if path in ("/api/login", "/api/logout"):
+        return await call_next(request)
+
+    # Check cookie
+    if request.cookies.get(AUTH_COOKIE) == DASHBOARD_PASSWORD:
+        return await call_next(request)
+
+    # WebSocket or API → 401
+    if path.startswith("/api") or path.startswith("/ws"):
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+
+    # Everything else → serve the SPA (login page handles it in React)
+    return await call_next(request)
+
+
+@app.post("/api/login")
+async def login(request: Request):
+    body = await request.json()
+    if body.get("password") == DASHBOARD_PASSWORD:
+        resp = JSONResponse({"ok": True})
+        resp.set_cookie(AUTH_COOKIE, DASHBOARD_PASSWORD, httponly=True,
+                        samesite="strict", max_age=60 * 60 * 24 * 30)
+        return resp
+    return JSONResponse({"ok": False, "error": "Wrong password"}, status_code=401)
+
+
+@app.post("/api/logout")
+async def logout():
+    resp = JSONResponse({"ok": True})
+    resp.delete_cookie(AUTH_COOKIE)
+    return resp
+
+
+# ── Serve built React frontend (production) ─────────────────────────────────
+_STATIC = Path(__file__).parent / "static_files"
+if _STATIC.exists():
+    app.mount("/assets", StaticFiles(directory=_STATIC / "assets"), name="assets")
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def serve_spa(full_path: str):
+        file = _STATIC / full_path
+        if file.is_file():
+            return FileResponse(file)
+        return FileResponse(_STATIC / "index.html")
 
 
 @app.websocket("/ws")

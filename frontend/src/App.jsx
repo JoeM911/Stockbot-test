@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import Login from './components/Login';
 import Header from './components/Header';
 import Chart from './components/Chart';
 import Positions from './components/Positions';
@@ -11,9 +12,26 @@ import Scanner from './components/Scanner';
 import Watchlist from './components/Watchlist';
 
 const API = '';
-const WS_URL = `ws://${window.location.host}/ws`;
+const WS_URL = `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/ws`;
 
 export default function App() {
+  const [authed, setAuthed] = useState(false);
+
+  // Check if already authenticated (cookie set) by hitting a protected endpoint
+  useEffect(() => {
+    fetch('/api/demo-mode')
+      .then(r => { if (r.ok) setAuthed(true); })
+      .catch(() => {});
+  }, []);
+
+  if (!authed) {
+    return <Login onAuth={() => setAuthed(true)} />;
+  }
+
+  return <Dashboard />;
+}
+
+function Dashboard() {
   const [account, setAccount]       = useState(null);
   const [positions, setPositions]   = useState([]);
   const [orders, setOrders]         = useState([]);
