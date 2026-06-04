@@ -491,6 +491,17 @@ async def set_aggression(req: AggressionRequest):
     return auto_trader.get_status()
 
 
+class PortfolioTargetRequest(BaseModel):
+    target: float | None = None  # None clears the target
+
+
+@app.post("/api/bot/portfolio-target")
+async def set_portfolio_target(req: PortfolioTargetRequest):
+    auto_trader.portfolio_target = req.target if req.target and req.target > 0 else None
+    await manager.broadcast({"type": "bot_status", "data": auto_trader.get_status()})
+    return auto_trader.get_status()
+
+
 class CommandRequest(BaseModel):
     command: str
 

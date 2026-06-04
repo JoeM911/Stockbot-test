@@ -26,6 +26,7 @@ class AutoTrader:
         self.max_trade_usd = 10_000
         self.stop_pct = 0.03       # -3% stop loss
         self.target_pct = 0.06     # +6% take profit (2:1)
+        self.portfolio_target: float | None = None  # account value goal
         self.activity: List[dict] = []
 
     # ------------------------------------------------------------------ public
@@ -77,6 +78,7 @@ class AutoTrader:
             "stop_pct": self.stop_pct,
             "target_pct": self.target_pct,
             "max_trade_usd": self.max_trade_usd,
+            "portfolio_target": self.portfolio_target,
             "activity": self.activity[:30],
         }
 
@@ -109,6 +111,11 @@ class AutoTrader:
                     await self._exit(sym, pos["qty"],
                                      f"Take profit +{pnl_pct*100:.1f}%", manager)
                     del held[sym]
+
+            # ---- PORTFOLIO TARGET: halt entries if goal reached -------------
+            equity = float(account.get("equity") or account.get("portfolio_value") or 0)
+            if self.portfolio_target and equity >= self.portfolio_target:
+                return  # goal reached — don't open new positions
 
             # ---- ENTRY: find best signal not already held -------------------
             if len(held) >= self.max_positions:
@@ -155,8 +162,15 @@ class AutoTrader:
                 pct = round(abs(s_score) * 100)
                 reasons.append(f"{'Bullish' if s_score > 0 else 'Bearish'} sentiment {pct}%")
 
+            # Scale down position size when close to portfolio target (within 10%)
+            target_scale = 1.0
+            if self.portfolio_target and equity > 0:
+                pct_of_goal = equity / self.portfolio_target
+                if pct_of_goal >= 0.90:
+                    target_scale = 0.5  # half size in final 10% — protect gains
+
             # Halve position size in extended hours (wider spreads, less liquidity)
-            risk = self.risk_pct * (0.5 if extended else 1.0)
+            risk = self.risk_pct * (0.5 if extended else 1.0) * target_scale
             trade_usd = min(buying_power * risk, self.max_trade_usd)
             qty = max(1, int(trade_usd / price))
             if extended:

@@ -8,21 +8,34 @@ function timeAgo(iso) {
   return `${Math.floor(s / 3600)}h ago`;
 }
 
+function fmtK(n) {
+  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(2)}M`;
+  if (n >= 1_000)     return `$${(n / 1_000).toFixed(1)}k`;
+  return `$${n.toFixed(0)}`;
+}
+
 const AGGRESSION_LABELS = ['', 'SAFE', 'CAUTIOUS', 'CAUTIOUS', 'BALANCED',
   'BALANCED', 'ACTIVE', 'ACTIVE', 'AGGRESSIVE', 'AGGRESSIVE', 'YOLO'];
 const AGGRESSION_COLORS = ['', '#00bcd4','#00bcd4','#00c853','#00c853',
   '#ffd700','#ffd700','#ff6d00','#ff6d00','#ff1744','#ff1744'];
 
-export default function BotActivity({ botStatus, onToggle, onSelect }) {
+export default function BotActivity({ botStatus, account, onToggle, onSelect }) {
   const enabled    = botStatus?.enabled ?? false;
   const activity   = botStatus?.activity ?? [];
   const aggression = botStatus?.aggression ?? 5;
-  const [dragging, setDragging] = useState(false);
-  const [localAgg, setLocalAgg] = useState(null);
+  const [dragging, setDragging]     = useState(false);
+  const [localAgg, setLocalAgg]     = useState(null);
+  const [targetInput, setTargetInput] = useState('');
+  const [editingTarget, setEditingTarget] = useState(false);
 
   const displayAgg = localAgg ?? aggression;
   const label = AGGRESSION_LABELS[displayAgg] ?? 'BALANCED';
   const color = AGGRESSION_COLORS[displayAgg] ?? '#ffd700';
+
+  const portfolioTarget = botStatus?.portfolio_target ?? null;
+  const equity = account?.equity ?? account?.portfolio_value ?? 0;
+  const progress = portfolioTarget ? Math.min(100, (equity / portfolioTarget) * 100) : null;
+  const goalReached = portfolioTarget && equity >= portfolioTarget;
 
   const onSliderChange = (e) => {
     setLocalAgg(Number(e.target.value));
@@ -37,6 +50,27 @@ export default function BotActivity({ botStatus, onToggle, onSelect }) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ level: val }),
+    });
+  };
+
+  const submitTarget = async () => {
+    const val = parseFloat(targetInput.replace(/[,$k]/gi, v => v.toLowerCase() === 'k' ? '000' : ''));
+    if (!isNaN(val) && val > 0) {
+      await fetch('/api/bot/portfolio-target', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ target: val }),
+      });
+    }
+    setEditingTarget(false);
+    setTargetInput('');
+  };
+
+  const clearTarget = async () => {
+    await fetch('/api/bot/portfolio-target', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ target: null }),
     });
   };
 
@@ -81,6 +115,56 @@ export default function BotActivity({ botStatus, onToggle, onSelect }) {
         <span className="dim">Max {botStatus?.max_positions ?? 5} pos</span>
         <span className="dim">≤${((botStatus?.max_trade_usd ?? 10000)/1000).toFixed(0)}k/trade</span>
       </div>
+
+      {/* Portfolio target */}
+      <div className="portfolio-target-row">
+        <span className="dim" style={{ fontSize: 8 }}>PORTFOLIO GOAL</span>
+        {goalReached && (
+          <span className="green" style={{ fontSize: 8, fontWeight: 'bold' }}>✓ GOAL REACHED</span>
+        )}
+        {portfolioTarget && !goalReached && (
+          <span className="dim" style={{ fontSize: 8 }}>
+            {fmtK(equity)} → {fmtK(portfolioTarget)}
+          </span>
+        )}
+        {editingTarget ? (
+          <div className="target-input-row">
+            <input
+              className="target-input"
+              placeholder="e.g. 100000"
+              value={targetInput}
+              onChange={e => setTargetInput(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && submitTarget()}
+              autoFocus
+            />
+            <button className="target-btn set" onClick={submitTarget}>SET</button>
+            <button className="target-btn cancel" onClick={() => setEditingTarget(false)}>✕</button>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', gap: 4 }}>
+            <button className="target-btn set" onClick={() => setEditingTarget(true)}>
+              {portfolioTarget ? `${fmtK(portfolioTarget)} ✎` : '+ SET GOAL'}
+            </button>
+            {portfolioTarget && (
+              <button className="target-btn cancel" onClick={clearTarget}>✕</button>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Progress bar */}
+      {portfolioTarget && (
+        <div className="target-progress-wrap">
+          <div
+            className="target-progress-bar"
+            style={{
+              width: `${progress}%`,
+              background: goalReached ? '#00e676' : progress > 90 ? '#ffd700' : '#00bcd4',
+            }}
+          />
+          <span className="target-progress-label">{progress.toFixed(1)}%</span>
+        </div>
+      )}
 
       {/* Activity feed */}
       <div className="bot-feed">

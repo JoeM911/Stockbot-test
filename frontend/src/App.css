@@ -704,6 +704,66 @@ body {
   flex-shrink: 0;
 }
 
+.portfolio-target-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+.target-input-row {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.target-input {
+  background: #0d1428;
+  border: 1px solid var(--accent);
+  color: var(--fg);
+  font-family: var(--font);
+  font-size: 9px;
+  padding: 2px 6px;
+  width: 90px;
+  outline: none;
+}
+
+.target-btn {
+  font-family: var(--font);
+  font-size: 8px;
+  padding: 2px 6px;
+  border: none;
+  cursor: pointer;
+  letter-spacing: 0.05em;
+}
+
+.target-btn.set   { background: #0d2040; color: #00bcd4; border: 1px solid #00bcd4; }
+.target-btn.cancel { background: #200d0d; color: #ff1744; border: 1px solid #ff1744; }
+
+.target-progress-wrap {
+  position: relative;
+  height: 4px;
+  background: #0d1428;
+  flex-shrink: 0;
+  margin: 0;
+}
+
+.target-progress-bar {
+  height: 100%;
+  transition: width 0.5s ease, background 0.5s ease;
+}
+
+.target-progress-label {
+  position: absolute;
+  right: 6px;
+  top: -10px;
+  font-size: 7px;
+  color: var(--dim);
+}
+
 .bot-feed {
   overflow-y: auto;
   flex: 1;

@@ -158,6 +158,7 @@ function Dashboard() {
           />
           <BotActivity
             botStatus={botStatus}
+            account={account}
             onToggle={toggleBot}
             onSelect={setActiveSymbol}
           />
