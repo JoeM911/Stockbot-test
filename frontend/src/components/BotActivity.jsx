@@ -54,6 +54,7 @@ export default function BotActivity({ botStatus, onToggle, onSettings, onSelect 
               <span className="bot-sym">{entry.symbol}</span>
               <span className="dim">{entry.qty} sh</span>
               {entry.price && <span className="bot-price">${entry.price.toFixed(2)}</span>}
+              {entry.extended && <span className="gold" style={{ fontSize: 8 }}>EXT</span>}
               <span className="bot-time dim">{timeAgo(entry.time)}</span>
             </div>
             <div className="bot-reason">

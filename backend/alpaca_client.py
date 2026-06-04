@@ -80,11 +80,32 @@ class AlpacaClient:
         limit_price: Optional[float] = None,
         stop_price: Optional[float] = None,
         time_in_force: str = "day",
+        extended_hours: bool = False,
+        use_current_price: bool = False,
     ) -> dict:
         order_side = OrderSide.BUY if side.lower() == "buy" else OrderSide.SELL
         tif = TimeInForce.DAY if time_in_force.lower() == "day" else TimeInForce.GTC
 
-        if order_type == "limit" and limit_price:
+        # Extended hours requires limit orders on Alpaca
+        if extended_hours:
+            if use_current_price or limit_price is None:
+                # Fetch latest quote to set a tight limit price
+                try:
+                    from alpaca.data.requests import StockLatestQuoteRequest
+                    req_q = StockLatestQuoteRequest(symbol_or_symbols=[symbol])
+                    quotes = await asyncio.to_thread(self.data.get_stock_latest_quote, req_q)
+                    q = quotes.get(symbol) or quotes[symbol]
+                    mid = (float(q.bid_price) + float(q.ask_price)) / 2
+                    # Buy slightly above mid, sell slightly below
+                    limit_price = round(mid * (1.003 if order_side == OrderSide.BUY else 0.997), 2)
+                except Exception:
+                    limit_price = limit_price or 0
+            req = LimitOrderRequest(
+                symbol=symbol, qty=qty, side=order_side,
+                time_in_force=tif, limit_price=limit_price,
+                extended_hours=True,
+            )
+        elif order_type == "limit" and limit_price:
             req = LimitOrderRequest(
                 symbol=symbol, qty=qty, side=order_side,
                 time_in_force=tif, limit_price=limit_price,

@@ -16,15 +16,19 @@ function useMarketStatus() {
   const [status, setStatus] = useState('--');
   useEffect(() => {
     const check = () => {
-      const now = new Date();
-      const day = now.getUTCDay();
-      const mins = now.getUTCHours() * 60 + now.getUTCMinutes();
-      // Market open 14:30-21:00 UTC Mon-Fri
-      const open = day >= 1 && day <= 5 && mins >= 870 && mins < 1260;
-      setStatus(open ? 'OPEN' : 'CLOSED');
+      // Convert to ET
+      const etStr = new Date().toLocaleString('en-US', { timeZone: 'America/New_York' });
+      const et = new Date(etStr);
+      const day  = et.getDay();   // 0=Sun,6=Sat
+      const mins = et.getHours() * 60 + et.getMinutes();
+      if (day === 0 || day === 6) { setStatus('CLOSED'); return; }
+      if (mins >= 4*60  && mins < 9*60+30)  { setStatus('PRE-MKT');   return; }
+      if (mins >= 9*60+30 && mins < 16*60)  { setStatus('OPEN');      return; }
+      if (mins >= 16*60 && mins < 20*60)    { setStatus('AFTER-HRS'); return; }
+      setStatus('CLOSED');
     };
     check();
-    const id = setInterval(check, 30000);
+    const id = setInterval(check, 15000);
     return () => clearInterval(id);
   }, []);
   return status;
@@ -105,7 +109,10 @@ export default function Header({ account, connected, alerts, botEnabled }) {
           </span>
         )}
 
-        <span className={`market-badge ${marketStatus === 'OPEN' ? 'open' : 'closed'}`}>
+        <span className={`market-badge ${
+          marketStatus === 'OPEN' ? 'open' :
+          marketStatus === 'PRE-MKT' || marketStatus === 'AFTER-HRS' ? 'extended' : 'closed'
+        }`}>
           {marketStatus}
         </span>
 

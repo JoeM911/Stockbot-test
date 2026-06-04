@@ -1,10 +1,17 @@
 """
 Autonomous trader: scans the universe every 60s, buys top signals,
 exits at stop-loss (-3%) or take-profit (+6%). Max 5 open positions.
+Supports regular hours (market orders) and extended hours (limit orders).
 """
 import asyncio
 from datetime import datetime, timezone
 from typing import List
+
+try:
+    from zoneinfo import ZoneInfo
+    _ET = ZoneInfo("America/New_York")
+except ImportError:
+    _ET = None  # fallback: use UTC offsets
 
 
 class AutoTrader:
@@ -21,6 +28,30 @@ class AutoTrader:
         self.activity: List[dict] = []
 
     # ------------------------------------------------------------------ public
+
+    @staticmethod
+    def session_type() -> str:
+        """Returns 'regular', 'pre_market', 'after_hours', or 'closed'."""
+        if _ET:
+            now = datetime.now(_ET)
+        else:
+            # Rough UTC fallback (assumes EDT, UTC-4)
+            from datetime import timezone, timedelta
+            now = datetime.now(timezone(timedelta(hours=-4)))
+
+        if now.weekday() >= 5:
+            return "closed"
+
+        h, m = now.hour, now.minute
+        mins = h * 60 + m
+
+        if 4 * 60 <= mins < 9 * 60 + 30:
+            return "pre_market"
+        if 9 * 60 + 30 <= mins < 16 * 60:
+            return "regular"
+        if 16 * 60 <= mins < 20 * 60:
+            return "after_hours"
+        return "closed"
 
     def toggle(self) -> bool:
         self.enabled = not self.enabled
@@ -39,8 +70,10 @@ class AutoTrader:
     async def run(self, universe: List[str], manager) -> None:
         if not self.enabled:
             return
-        if not self._market_open():
+        session = self.session_type()
+        if session == "closed":
             return
+        extended = session in ("pre_market", "after_hours")
 
         try:
             account = await self.alpaca.get_account()
@@ -109,32 +142,34 @@ class AutoTrader:
                 pct = round(abs(s_score) * 100)
                 reasons.append(f"{'Bullish' if s_score > 0 else 'Bearish'} sentiment {pct}%")
 
-            trade_usd = min(buying_power * self.risk_pct, self.max_trade_usd)
+            # Halve position size in extended hours (wider spreads, less liquidity)
+            risk = self.risk_pct * (0.5 if extended else 1.0)
+            trade_usd = min(buying_power * risk, self.max_trade_usd)
             qty = max(1, int(trade_usd / price))
-            await self._enter(sym, qty, price, reasons, manager)
+            if extended:
+                reasons.append(f"{'Pre-market' if session == 'pre_market' else 'After-hours'} session")
+            await self._enter(sym, qty, price, reasons, manager, extended=extended)
 
         except Exception as e:
             print(f"[AutoTrader] {e}")
 
     # ----------------------------------------------------------------- private
 
-    def _market_open(self) -> bool:
-        now = datetime.now(timezone.utc)
-        if now.weekday() >= 5:          # weekend
-            return False
-        h, m = now.hour, now.minute
-        open_mins  = 14 * 60 + 30       # 09:30 ET = 14:30 UTC
-        close_mins = 20 * 60 + 45       # 15:45 ET = 20:45 UTC
-        cur_mins   = h * 60 + m
-        return open_mins <= cur_mins <= close_mins
-
     def _log(self, entry: dict):
         self.activity.insert(0, entry)
         self.activity = self.activity[:100]
 
-    async def _enter(self, symbol, qty, price, reasons, manager):
+    async def _enter(self, symbol, qty, price, reasons, manager, extended=False):
         try:
-            result = await self.alpaca.place_order(symbol, qty, "buy", "market")
+            if extended:
+                # Extended hours require limit orders; buy slightly above market
+                limit = round(price * 1.002, 2)
+                result = await self.alpaca.place_order(
+                    symbol, qty, "buy", "limit",
+                    limit_price=limit, extended_hours=True,
+                )
+            else:
+                result = await self.alpaca.place_order(symbol, qty, "buy", "market")
             entry = {
                 "time": datetime.now(timezone.utc).isoformat(),
                 "action": "BUY",
@@ -143,18 +178,30 @@ class AutoTrader:
                 "price": round(price, 2),
                 "reasons": reasons,
                 "order_id": result.get("id"),
+                "extended": extended,
             }
             self._log(entry)
             await manager.broadcast({"type": "bot_activity", "data": entry})
-            print(f"[AutoTrader] BUY {qty} {symbol} @ ${price:.2f} — {reasons}")
+            print(f"[AutoTrader] BUY {qty} {symbol} @ ${price:.2f} {'(ext)' if extended else ''} — {reasons}")
         except Exception as e:
             print(f"[AutoTrader] entry {symbol}: {e}")
 
     async def _exit(self, symbol, qty, reason, manager):
         try:
-            result = await self.alpaca.place_order(
-                symbol, abs(float(qty)), "sell", "market"
-            )
+            session = self.session_type()
+            extended = session in ("pre_market", "after_hours")
+            qty_f = abs(float(qty))
+            if extended:
+                # Get approximate current price from position (passed as qty arg)
+                # Use a wide limit to ensure fill
+                result = await self.alpaca.place_order(
+                    symbol, qty_f, "sell", "limit",
+                    limit_price=None, extended_hours=True, use_current_price=True,
+                )
+            else:
+                result = await self.alpaca.place_order(
+                    symbol, qty_f, "sell", "market"
+                )
             entry = {
                 "time": datetime.now(timezone.utc).isoformat(),
                 "action": "SELL",

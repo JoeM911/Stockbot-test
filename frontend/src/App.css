@@ -161,8 +161,9 @@ body {
   letter-spacing: 1px;
 }
 
-.market-badge.open  { background: #00e67618; color: var(--green); border: 1px solid #00e67640; }
-.market-badge.closed { background: #ff174418; color: var(--red);   border: 1px solid #ff174440; }
+.market-badge.open     { background: #00e67618; color: var(--green);  border: 1px solid #00e67640; }
+.market-badge.extended { background: #ffd70018; color: var(--gold);   border: 1px solid #ffd70040; }
+.market-badge.closed   { background: #ff174418; color: var(--red);    border: 1px solid #ff174440; }
 
 .conn-dot {
   width: 7px; height: 7px; border-radius: 50%;
