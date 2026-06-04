@@ -162,21 +162,25 @@ export default function BotActivity({ botStatus, account, onToggle, onSelect }) 
       {/* Trade style toggle */}
       <div className="bot-mode-row">
         <span className="dim" style={{ fontSize: 8, whiteSpace: 'nowrap' }}>STYLE</span>
-        {['swing', 'day'].map(s => (
+        {[
+          { key: 'auto',  label: 'AUTO',      color: '#ffd700' },
+          { key: 'swing', label: 'SWING',     color: '#00bcd4' },
+          { key: 'day',   label: 'DAY TRADE', color: '#ff6d00' },
+        ].map(({ key, label, color }) => (
           <button
-            key={s}
-            className={`mode-btn ${tradeStyle === s ? 'active' : ''}`}
-            style={tradeStyle === s ? {
-              color: s === 'day' ? '#ff6d00' : '#00bcd4',
-              borderColor: s === 'day' ? '#ff6d00' : '#00bcd4',
-            } : {}}
-            onClick={() => setStyle(s)}
+            key={key}
+            className={`mode-btn ${tradeStyle === key ? 'active' : ''}`}
+            style={tradeStyle === key ? { color, borderColor: color } : {}}
+            onClick={() => setStyle(key)}
           >
-            {s === 'day' ? 'DAY TRADE' : 'SWING'}
+            {label}
           </button>
         ))}
         {tradeStyle === 'day' && (
           <span style={{ fontSize: 7, color: '#ff6d00', marginLeft: 'auto' }}>FLAT @3:45PM</span>
+        )}
+        {tradeStyle === 'auto' && (
+          <span style={{ fontSize: 7, color: '#ffd700', marginLeft: 'auto' }}>BOT DECIDES</span>
         )}
       </div>
 
@@ -259,6 +263,11 @@ export default function BotActivity({ botStatus, account, onToggle, onSelect }) 
               <span className="bot-sym">{entry.symbol}</span>
               <span className="dim">{entry.qty} sh</span>
               {entry.price && <span className="bot-price">${entry.price.toFixed(2)}</span>}
+              {entry.style && (
+                <span style={{ fontSize: 7, color: entry.style === 'day' ? '#ff6d00' : '#00bcd4', fontWeight: 700 }}>
+                  {entry.style.toUpperCase()}
+                </span>
+              )}
               {entry.extended && <span className="gold" style={{ fontSize: 8 }}>EXT</span>}
               <span className="bot-time dim">{timeAgo(entry.time)}</span>
             </div>

@@ -514,7 +514,7 @@ async def set_bot_mode(req: ModeRequest):
 
 
 class TradeStyleRequest(BaseModel):
-    style: str  # "swing" or "day"
+    style: str  # "auto", "swing", or "day"
 
 
 @app.post("/api/bot/trade-style")
