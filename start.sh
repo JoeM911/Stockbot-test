@@ -9,7 +9,7 @@ echo "================================================"
 if [ -n "$RAILWAY_ENVIRONMENT" ]; then
   echo "[Railway] Starting FastAPI on port $PORT..."
   cd backend
-  exec uvicorn main:app --host 0.0.0.0 --port "${PORT:-8000}"
+  exec python -m uvicorn main:app --host 0.0.0.0 --port "${PORT:-8000}"
 fi
 
 # Local dev: check for .env file
