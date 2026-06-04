@@ -36,6 +36,9 @@ day_trader = DayTrader(alpaca)
 swing_trader = SwingTrader(alpaca)
 sentiment_analyzer = SentimentAnalyzer()
 auto_trader = AutoTrader(alpaca, scanner, sentiment_analyzer)
+# Auto-enable the bot if BOT_ENABLED env var is set to true
+if os.getenv("BOT_ENABLED", "").lower() in ("1", "true", "yes"):
+    auto_trader.enabled = True
 
 # In-memory equity history for demo mode / live tracking (capped at 1440 pts)
 _equity_history: List[dict] = []
