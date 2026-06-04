@@ -70,6 +70,9 @@ function Dashboard() {
         case 'signals':      setSignals(msg.data); break;
         case 'bot_status':   setBotStatus(msg.data); break;
         case 'sentiment':    setSentiment(msg.data); break;
+        case 'bot_plan':
+          setBotStatus(prev => prev ? { ...prev, plan: msg.data.plan } : prev);
+          break;
         case 'bot_activity':
           setBotStatus(prev => prev ? {
             ...prev,

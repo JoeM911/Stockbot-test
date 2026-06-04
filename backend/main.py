@@ -180,6 +180,16 @@ async def sentiment_loop():
         })
 
 
+async def thinking_loop():
+    """Runs every 5 minutes always — bot plans next trades regardless of market hours."""
+    while True:
+        try:
+            await auto_trader.think(UNIVERSE, manager)
+        except Exception as e:
+            print(f"[thinking_loop] {e}")
+        await asyncio.sleep(300)  # 5 minutes
+
+
 async def strategy_loop():
     while True:
         try:
@@ -211,6 +221,7 @@ async def lifespan(app: FastAPI):
     asyncio.create_task(broadcast_loop())
     asyncio.create_task(scanner_loop())
     asyncio.create_task(auto_trader_loop())
+    asyncio.create_task(thinking_loop())
     asyncio.create_task(sentiment_loop())
     asyncio.create_task(strategy_loop())
     asyncio.create_task(news_loop())

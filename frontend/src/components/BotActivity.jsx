@@ -1,4 +1,55 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+
+function useMarketStatus() {
+  const [status, setStatus] = useState({ state: 'unknown', label: '...', countdown: '' });
+  useEffect(() => {
+    const update = () => {
+      const now = new Date();
+      const et  = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
+      const day = et.getDay();
+      const mins = et.getHours() * 60 + et.getMinutes();
+      const isWeekend = day === 0 || day === 6;
+
+      let state, label, nextOpen = null;
+      if (isWeekend || mins < 4 * 60 || mins >= 20 * 60) {
+        state = 'closed'; label = 'CLOSED';
+        const next = new Date(et);
+        if (isWeekend) {
+          next.setDate(next.getDate() + (day === 6 ? 2 : 1));
+        } else if (mins >= 20 * 60) {
+          next.setDate(next.getDate() + (day === 5 ? 3 : 1));
+        }
+        next.setHours(9, 30, 0, 0);
+        nextOpen = next;
+      } else if (mins < 9 * 60 + 30) {
+        state = 'pre'; label = 'PRE-MKT';
+        const next = new Date(et); next.setHours(9, 30, 0, 0); nextOpen = next;
+      } else if (mins < 16 * 60) {
+        state = 'open'; label = 'OPEN';
+        const next = new Date(et); next.setHours(16, 0, 0, 0); nextOpen = next;
+      } else {
+        state = 'after'; label = 'AFTER-HRS';
+        const next = new Date(et); next.setHours(20, 0, 0, 0); nextOpen = next;
+      }
+
+      let countdown = '';
+      if (nextOpen) {
+        const diff = nextOpen - now + (nextOpen <= now ? 86400000 : 0);
+        const h = Math.floor(diff / 3600000);
+        const m = Math.floor((diff % 3600000) / 60000);
+        const s = Math.floor((diff % 60000) / 1000);
+        countdown = state === 'open'
+          ? `closes in ${h}h ${m}m`
+          : `opens in ${h}h ${m}m ${s}s`;
+      }
+      setStatus({ state, label, countdown });
+    };
+    update();
+    const t = setInterval(update, 1000);
+    return () => clearInterval(t);
+  }, []);
+  return status;
+}
 
 function timeAgo(iso) {
   if (!iso) return '';
@@ -43,7 +94,10 @@ export default function BotActivity({ botStatus, account, onToggle, onSelect }) 
   const activity   = botStatus?.activity ?? [];
   const aggression = botStatus?.aggression ?? 5;
   const mode       = botStatus?.mode ?? 'both';
-  const tradeStyle = botStatus?.trade_style ?? 'swing';
+  const tradeStyle = botStatus?.trade_style ?? 'auto';
+  const plan       = botStatus?.plan ?? [];
+  const market     = useMarketStatus();
+  const isThinking = market.state !== 'open' && tradeStyle === 'auto';
   const [dragging, setDragging]     = useState(false);
   const [localAgg, setLocalAgg]     = useState(null);
   const [targetInput, setTargetInput] = useState('');
@@ -125,6 +179,18 @@ export default function BotActivity({ botStatus, account, onToggle, onSelect }) 
         <button className={`bot-toggle ${enabled ? 'on' : 'off'}`} onClick={onToggle}>
           {enabled ? '⏸ PAUSE' : '▶ START'}
         </button>
+      </div>
+
+      {/* Market status */}
+      <div className="market-status-row">
+        <span className={`market-state-badge ${market.state}`}>{market.label}</span>
+        <span className="dim" style={{ fontSize: 8 }}>{market.countdown}</span>
+        {isThinking && enabled && (
+          <span className="thinking-badge">
+            <span className="thinking-dot" />
+            THINKING
+          </span>
+        )}
       </div>
 
       {/* Aggression slider */}
@@ -242,6 +308,38 @@ export default function BotActivity({ botStatus, account, onToggle, onSelect }) 
             }}
           />
           <span className="target-progress-label">{progress.toFixed(1)}%</span>
+        </div>
+      )}
+
+      {/* Bot plan */}
+      {plan.length > 0 && (
+        <div className="bot-plan">
+          <div className="bot-plan-header">
+            <span className="dim" style={{ fontSize: 8 }}>
+              {market.state === 'open' ? 'WATCHING' : 'NEXT SESSION PLAN'}
+            </span>
+            <span className="dim" style={{ fontSize: 7 }}>{plan.length} candidates</span>
+          </div>
+          {plan.map((p, i) => (
+            <div key={i} className="plan-entry" onClick={() => onSelect(p.symbol)}>
+              <div className="plan-entry-top">
+                <span className="bot-action" style={{ color: actionColor(p.action), fontSize: 9 }}>
+                  {p.action}
+                </span>
+                <span className="bot-sym">{p.symbol}</span>
+                <span style={{ fontSize: 8, color: p.style === 'day' ? '#ff6d00' : '#00bcd4', fontWeight: 700 }}>
+                  {p.style?.toUpperCase()}
+                </span>
+                {p.confirmed && (
+                  <span style={{ fontSize: 7, color: '#ffd700' }}>✓ CONFIRMED</span>
+                )}
+                <span className="dim" style={{ fontSize: 8, marginLeft: 'auto' }}>
+                  {'●'.repeat(p.conviction)}{'○'.repeat(3 - p.conviction)}
+                </span>
+              </div>
+              <div className="plan-reasoning">{p.reasoning}</div>
+            </div>
+          ))}
         </div>
       )}
 

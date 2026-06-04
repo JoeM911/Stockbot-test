@@ -38,6 +38,7 @@ class AutoTrader:
         self.target_pct    = 0.06
         self.portfolio_target: float | None = None
         self._position_styles: Dict[str, str] = {}   # sym → "swing" | "day"
+        self.plan: List[dict] = []     # bot's planned trades (updated every 5 min)
         self.activity: List[dict] = []
 
     # ------------------------------------------------------------------ public
@@ -84,8 +85,123 @@ class AutoTrader:
             "target_pct":       self.target_pct,
             "max_trade_usd":    self.max_trade_usd,
             "portfolio_target": self.portfolio_target,
+            "plan":             self.plan,
             "activity":         self.activity[:30],
         }
+
+    # ------------------------------------------------------------ thinking loop
+
+    @staticmethod
+    def _reasoning(sig: dict, sent_score: float | None, session: str) -> str:
+        action     = "LONG" if sig["action"] == "BUY" else "SHORT"
+        style      = sig.get("style", "swing").upper()
+        signals    = sig["signals"][:3]
+        conviction = sig["conviction"]
+
+        parts = [", ".join(signals)]
+        if sig.get("reason") == "Multi-TF confirmed":
+            parts.append("confirmed on both daily + 5m charts")
+        if sent_score is not None:
+            bull = sent_score > 0
+            pct  = round(abs(sent_score) * 100)
+            parts.append(f"{'bullish' if bull else 'bearish'} crowd sentiment {pct}%")
+        conv_word = {1: "weak", 2: "moderate", 3: "strong"}[conviction]
+        if session == "closed":
+            parts.append(f"{conv_word} setup — queuing {action} ({style}) for next session")
+        elif session in ("pre_market", "after_hours"):
+            parts.append(f"{conv_word} setup — targeting {action} ({style}) at open")
+        else:
+            parts.append(f"{conv_word} live {action} candidate ({style})")
+        return ". ".join(parts).capitalize() + "."
+
+    async def think(self, universe: List[str], manager) -> None:
+        """
+        Runs every 5 minutes regardless of market hours.
+        Scans the universe, builds a ranked plan, and broadcasts it.
+        Never places orders — pure analysis.
+        """
+        try:
+            session = self.session_type()
+
+            # Daily scan always available; intraday only during regular hours
+            if session == "regular":
+                daily_sigs, intra_sigs = await asyncio.gather(
+                    self.scanner.scan(universe),
+                    self.scanner.scan_intraday(universe),
+                )
+            else:
+                daily_sigs = await self.scanner.scan(universe)
+                intra_sigs = []
+
+            # Merge into signal map (same logic as _build_signal_map)
+            daily_map = {s["symbol"]: s for s in daily_sigs}
+            intra_map = {s["symbol"]: s for s in intra_sigs}
+            sig_map: Dict[str, dict] = {}
+            for sym in set(daily_map) | set(intra_map):
+                d, i = daily_map.get(sym), intra_map.get(sym)
+                if d and i:
+                    if d["action"] == i["action"] and d["action"] in ("BUY", "SHORT"):
+                        merged = i["signals"] + [f"Confirmed {d['action']} 1D"]
+                        sig_map[sym] = {**i, "signals": merged,
+                                        "conviction": min(3, max(d["conviction"], i["conviction"]) + 1),
+                                        "style": "day", "reason": "Multi-TF confirmed"}
+                    elif d["action"] in ("BUY", "SHORT") and d["conviction"] >= (i["conviction"] if i else 0):
+                        sig_map[sym] = {**d, "style": "swing"}
+                    elif i and i["action"] in ("BUY", "SHORT"):
+                        sig_map[sym] = {**i, "style": "day"}
+                elif d and d["action"] in ("BUY", "SHORT"):
+                    sig_map[sym] = {**d, "style": "swing"}
+                elif i and i["action"] in ("BUY", "SHORT"):
+                    sig_map[sym] = {**i, "style": "day"}
+
+            candidates = sorted(
+                sig_map.values(),
+                key=lambda s: s["conviction"] * 10 + abs(s.get("change_pct", 0)),
+                reverse=True,
+            )
+
+            # Sentiment for top 15
+            sent_map: Dict[str, float] = {}
+            if self.sentiment and candidates:
+                try:
+                    syms = [c["symbol"] for c in candidates[:15]]
+                    scores = await self.sentiment.scan_sentiment(syms)
+                    sent_map = {s["symbol"]: s["score"] for s in scores}
+                except Exception:
+                    pass
+
+            # Build plan: top 5 candidates with reasoning
+            plan = []
+            for sig in candidates[:5]:
+                sym        = sig["symbol"]
+                sent_score = sent_map.get(sym)
+                plan.append({
+                    "symbol":    sym,
+                    "action":    sig["action"],
+                    "style":     sig.get("style", "swing"),
+                    "conviction": sig["conviction"],
+                    "price":     sig["price"],
+                    "signals":   sig["signals"],
+                    "sentiment": round(sent_score, 3) if sent_score is not None else None,
+                    "reasoning": self._reasoning(sig, sent_score, session),
+                    "confirmed": sig.get("reason") == "Multi-TF confirmed",
+                })
+
+            self.plan = plan
+
+            await manager.broadcast({
+                "type": "bot_plan",
+                "data": {
+                    "plan":    plan,
+                    "session": session,
+                    "scanned": len(daily_sigs),
+                    "time":    datetime.now(timezone.utc).isoformat(),
+                },
+            })
+            print(f"[AutoTrader] Think: {len(plan)} planned, session={session}")
+
+        except Exception as e:
+            print(f"[AutoTrader] think: {e}")
 
     # ---------------------------------------------------------------- scanning
 
