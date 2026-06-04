@@ -234,8 +234,10 @@ class AutoTrader:
             long_candidates  = [s for s in signals if s["action"] == "BUY"   and s["symbol"] not in held]
             short_candidates = [s for s in signals if s["action"] == "SHORT" and s["symbol"] not in held]
 
-            if self.mode == "long":  short_candidates = []
-            if self.mode == "short": long_candidates  = []
+            # In AUTO style the bot picks direction itself; mode override only applies in SWING/DAY
+            if self.trade_style != "auto":
+                if self.mode == "long":  short_candidates = []
+                if self.mode == "short": long_candidates  = []
 
             if not long_candidates and not short_candidates:
                 return

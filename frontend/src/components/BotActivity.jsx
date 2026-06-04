@@ -144,20 +144,22 @@ export default function BotActivity({ botStatus, account, onToggle, onSelect }) 
         </span>
       </div>
 
-      {/* Mode toggle */}
-      <div className="bot-mode-row">
-        <span className="dim" style={{ fontSize: 8, whiteSpace: 'nowrap' }}>MODE</span>
-        {['long', 'both', 'short'].map(m => (
-          <button
-            key={m}
-            className={`mode-btn ${mode === m ? 'active' : ''}`}
-            style={mode === m ? { color: MODE_COLORS[m], borderColor: MODE_COLORS[m] } : {}}
-            onClick={() => setMode(m)}
-          >
-            {MODE_LABELS[m]}
-          </button>
-        ))}
-      </div>
+      {/* Mode toggle — only shown when manually overriding style */}
+      {tradeStyle !== 'auto' && (
+        <div className="bot-mode-row">
+          <span className="dim" style={{ fontSize: 8, whiteSpace: 'nowrap' }}>MODE</span>
+          {['long', 'both', 'short'].map(m => (
+            <button
+              key={m}
+              className={`mode-btn ${mode === m ? 'active' : ''}`}
+              style={mode === m ? { color: MODE_COLORS[m], borderColor: MODE_COLORS[m] } : {}}
+              onClick={() => setMode(m)}
+            >
+              {MODE_LABELS[m]}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Trade style toggle */}
       <div className="bot-mode-row">
