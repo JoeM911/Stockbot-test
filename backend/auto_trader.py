@@ -10,8 +10,8 @@ from typing import List
 try:
     from zoneinfo import ZoneInfo
     _ET = ZoneInfo("America/New_York")
-except ImportError:
-    _ET = None  # fallback: use UTC offsets
+except Exception:
+    _ET = None  # Windows without tzdata — fall back to UTC-offset estimate
 
 
 class AutoTrader:
