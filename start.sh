@@ -5,7 +5,14 @@ echo "================================================"
 echo "  STOCKBOT TERMINAL - Starting..."
 echo "================================================"
 
-# Check .env
+# Railway: env vars are injected — skip .env check, start backend only
+if [ -n "$RAILWAY_ENVIRONMENT" ]; then
+  echo "[Railway] Starting FastAPI on port $PORT..."
+  cd backend
+  exec uvicorn main:app --host 0.0.0.0 --port "${PORT:-8000}"
+fi
+
+# Local dev: check for .env file
 if [ ! -f backend/.env ]; then
   if [ -f .env ]; then
     cp .env backend/.env
