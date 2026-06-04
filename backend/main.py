@@ -502,6 +502,17 @@ async def set_portfolio_target(req: PortfolioTargetRequest):
     return auto_trader.get_status()
 
 
+class ModeRequest(BaseModel):
+    mode: str  # "long", "short", or "both"
+
+
+@app.post("/api/bot/mode")
+async def set_bot_mode(req: ModeRequest):
+    auto_trader.set_mode(req.mode)
+    await manager.broadcast({"type": "bot_status", "data": auto_trader.get_status()})
+    return auto_trader.get_status()
+
+
 class CommandRequest(BaseModel):
     command: str
 

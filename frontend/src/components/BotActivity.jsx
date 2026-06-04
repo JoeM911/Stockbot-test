@@ -19,14 +19,42 @@ const AGGRESSION_LABELS = ['', 'SAFE', 'CAUTIOUS', 'CAUTIOUS', 'BALANCED',
 const AGGRESSION_COLORS = ['', '#00bcd4','#00bcd4','#00c853','#00c853',
   '#ffd700','#ffd700','#ff6d00','#ff6d00','#ff1744','#ff1744'];
 
+const MODE_LABELS = { long: 'LONG', short: 'SHORT', both: 'LONG+SHORT' };
+const MODE_COLORS = { long: '#00e676', short: '#e040fb', both: '#00bcd4' };
+
+function actionColor(action) {
+  if (action === 'BUY')   return '#00e676';
+  if (action === 'SELL')  return '#ff1744';
+  if (action === 'SHORT') return '#e040fb';
+  if (action === 'COVER') return '#00bcd4';
+  return '#b8c8e0';
+}
+
+function entryClass(action) {
+  if (action === 'BUY')   return 'buy';
+  if (action === 'SELL')  return 'sell';
+  if (action === 'SHORT') return 'short';
+  if (action === 'COVER') return 'cover';
+  return '';
+}
+
 export default function BotActivity({ botStatus, account, onToggle, onSelect }) {
   const enabled    = botStatus?.enabled ?? false;
   const activity   = botStatus?.activity ?? [];
   const aggression = botStatus?.aggression ?? 5;
+  const mode       = botStatus?.mode ?? 'both';
   const [dragging, setDragging]     = useState(false);
   const [localAgg, setLocalAgg]     = useState(null);
   const [targetInput, setTargetInput] = useState('');
   const [editingTarget, setEditingTarget] = useState(false);
+
+  const setMode = async (m) => {
+    await fetch('/api/bot/mode', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode: m }),
+    });
+  };
 
   const displayAgg = localAgg ?? aggression;
   const label = AGGRESSION_LABELS[displayAgg] ?? 'BALANCED';
@@ -107,6 +135,21 @@ export default function BotActivity({ botStatus, account, onToggle, onSelect }) 
         </span>
       </div>
 
+      {/* Mode toggle */}
+      <div className="bot-mode-row">
+        <span className="dim" style={{ fontSize: 8, whiteSpace: 'nowrap' }}>MODE</span>
+        {['long', 'both', 'short'].map(m => (
+          <button
+            key={m}
+            className={`mode-btn ${mode === m ? 'active' : ''}`}
+            style={mode === m ? { color: MODE_COLORS[m], borderColor: MODE_COLORS[m] } : {}}
+            onClick={() => setMode(m)}
+          >
+            {MODE_LABELS[m]}
+          </button>
+        ))}
+      </div>
+
       {/* Settings summary */}
       <div className="bot-settings-row">
         <span className="dim">Risk {((botStatus?.risk_pct ?? 0.05) * 100).toFixed(0)}%</span>
@@ -176,11 +219,11 @@ export default function BotActivity({ botStatus, account, onToggle, onSelect }) 
         {activity.map((entry, i) => (
           <div
             key={i}
-            className={`bot-entry ${entry.action === 'BUY' ? 'buy' : 'sell'}`}
+            className={`bot-entry ${entryClass(entry.action)}`}
             onClick={() => onSelect(entry.symbol)}
           >
             <div className="bot-entry-top">
-              <span className={`bot-action ${entry.action === 'BUY' ? 'green' : 'red'}`}>
+              <span className="bot-action" style={{ color: actionColor(entry.action) }}>
                 {entry.action}
               </span>
               <span className="bot-sym">{entry.symbol}</span>

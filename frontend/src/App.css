@@ -695,6 +695,30 @@ body {
   text-align: right;
 }
 
+.bot-mode-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.mode-btn {
+  font-family: var(--font, 'IBM Plex Mono', monospace);
+  font-size: 8px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 2px;
+  cursor: pointer;
+  background: transparent;
+  border: 1px solid var(--border-hi);
+  color: var(--text-dim);
+  letter-spacing: 0.04em;
+  transition: filter 0.15s;
+}
+.mode-btn:hover { filter: brightness(1.4); }
+.mode-btn.active { background: #0d1428; }
+
 .bot-settings-row {
   display: flex;
   gap: 14px;
@@ -777,8 +801,10 @@ body {
   transition: background 0.1s;
 }
 .bot-entry:hover { background: var(--bg-hover); }
-.bot-entry.buy  { border-left: 2px solid var(--green); }
-.bot-entry.sell { border-left: 2px solid var(--red); }
+.bot-entry.buy   { border-left: 2px solid var(--green); }
+.bot-entry.sell  { border-left: 2px solid var(--red); }
+.bot-entry.short { border-left: 2px solid var(--purple); }
+.bot-entry.cover { border-left: 2px solid var(--cyan); }
 
 .bot-entry-top {
   display: flex;
