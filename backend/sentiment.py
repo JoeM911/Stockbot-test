@@ -36,9 +36,11 @@ class SentimentAnalyzer:
             async with httpx.AsyncClient(timeout=10, follow_redirects=True) as c:
                 r = await c.get(
                     "https://api.stocktwits.com/api/2/trending/symbols.json",
-                    headers={"User-Agent": "StockbotTerminal/1.0"},
+                    headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"},
                 )
-                syms = r.json().get("symbols", [])
+                print(f"[Sentiment] StockTwits trending status: {r.status_code}")
+                data = r.json()
+                syms = data.get("symbols", [])
                 self._trend_cache = [
                     {"symbol": s["symbol"], "watchlist_count": s.get("watchlist_count", 0)}
                     for s in syms[:20]
@@ -56,7 +58,7 @@ class SentimentAnalyzer:
             async with httpx.AsyncClient(timeout=10, follow_redirects=True) as c:
                 r = await c.get(
                     f"https://api.stocktwits.com/api/2/streams/symbol/{symbol}.json",
-                    headers={"User-Agent": "StockbotTerminal/1.0"},
+                    headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"},
                 )
                 messages = r.json().get("messages", [])
                 bullish = sum(
@@ -102,12 +104,19 @@ class SentimentAnalyzer:
             return self._reddit_cache
         counts: Dict[str, int] = {}
         try:
-            async with httpx.AsyncClient(timeout=10, follow_redirects=True,
-                                         headers={"User-Agent": "StockbotTerminal/1.0"}) as c:
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                "Accept": "application/json",
+            }
+            async with httpx.AsyncClient(timeout=15, follow_redirects=True, headers=headers) as c:
                 for sort in ("hot", "new"):
                     r = await c.get(
-                        f"https://www.reddit.com/r/wallstreetbets/{sort}.json?limit=50"
+                        f"https://www.reddit.com/r/wallstreetbets/{sort}.json?limit=50&raw_json=1"
                     )
+                    print(f"[Sentiment] Reddit WSB {sort} status: {r.status_code}")
+                    if r.status_code != 200:
+                        print(f"[Sentiment] Reddit response: {r.text[:200]}")
+                        continue
                     posts = r.json().get("data", {}).get("children", [])
                     for post in posts:
                         title = post.get("data", {}).get("title", "")
