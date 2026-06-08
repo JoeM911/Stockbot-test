@@ -31,7 +31,7 @@ class AutoTrader:
         self.mode      = "both"       # "long", "short", "both"
         self.trade_style = "auto"     # "auto", "swing", "day"
         self.aggression    = 5
-        self.max_positions = 5
+        self.max_positions = 25
         self.risk_pct      = 0.05
         self.max_trade_usd = 10_000
         self.stop_pct      = 0.03
