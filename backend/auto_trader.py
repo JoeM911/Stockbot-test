@@ -56,8 +56,8 @@ class AutoTrader:
         self.risk_pct      = round(0.02 + t * 0.13, 3)
         self.stop_pct      = round(0.02 + t * 0.04, 3)
         self.target_pct    = round(0.04 + t * 0.10, 3)
-        self.max_positions = max(2, round(3 + t * 7))
         self.max_trade_usd = round(5_000 + t * 45_000)
+        # max_positions is intentionally NOT tied to aggression — set once at startup
 
     def set_mode(self, mode: str):
         self.mode = mode if mode in ("long", "short", "both") else "both"
