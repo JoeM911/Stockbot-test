@@ -30,12 +30,8 @@ class AutoTrader:
         self.enabled   = True
         self.mode      = "both"       # "long", "short", "both"
         self.trade_style = "auto"     # "auto", "swing", "day"
-        self.aggression    = 5
-        self.max_positions = 25
-        self.risk_pct      = 0.05
-        self.max_trade_usd = 10_000
-        self.stop_pct      = 0.03
-        self.target_pct    = 0.06
+        self.set_aggression(10)       # start in hardcore / max-aggression mode
+        self.max_positions = 25       # allow more concurrent positions than the aggression formula gives
         self.portfolio_target: float | None = None
         self._position_styles: Dict[str, str] = {}   # sym → "swing" | "day"
         self.plan: List[dict] = []     # bot's planned trades (updated every 5 min)
